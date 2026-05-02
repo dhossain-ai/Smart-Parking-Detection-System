@@ -213,3 +213,5 @@ results/videos/*.mov
 results/images/*.png
 results/images/*.jpg
 results/figures/*.png
+results/figures/*.jpg
+results/figures/*.jpeg
