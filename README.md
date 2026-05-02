@@ -60,9 +60,9 @@ docs/           # Project planning and AI context documents
 
 ## Current Status
 
-Phase 1B dataset setup is complete or in progress. The repository can point to a local PKLot dataset and verify that image files plus XML or COCO annotations are present.
+Phase 2 COCO preprocessing is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, and create metadata CSV files for later offline training.
 
-Dataset processing, model training, UI implementation, and evaluation have not started.
+Model training, UI implementation, and evaluation have not started.
 
 ## Local Setup
 
@@ -105,3 +105,36 @@ data/raw/PKLot/test/_annotations.coco.json
 ```
 
 If PKLot has not been downloaded or unzipped yet, the dataset checker will fail with setup instructions. That is expected before the local dataset is available.
+
+## Phase 2 COCO Metadata Workflow
+
+Generate project-ready parking-slot metadata:
+
+```bash
+python -m src.data.prepare_pklot_coco
+```
+
+This writes:
+
+```text
+data/processed/metadata/slot_annotations.csv
+data/processed/metadata/split_summary.csv
+data/processed/metadata/category_summary.csv
+```
+
+The metadata keeps image paths, COCO annotation IDs, normalized labels, and clipped bounding boxes. Category names such as `space-empty`, `empty`, `vacant`, `space-occupied`, and `occupied` are normalized to `vacant` or `occupied`.
+
+Export only a small crop sample set for visual verification:
+
+```bash
+python -m src.data.export_crop_samples --samples-per-class 20
+python -m src.data.make_crop_contact_sheet
+```
+
+Full crop export is available but intentionally optional:
+
+```bash
+python -m src.data.export_crop_samples --export-all
+```
+
+Later training should prefer metadata-driven on-the-fly cropping from source images. That avoids committing or storing hundreds of thousands of generated crop files.

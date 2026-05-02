@@ -33,19 +33,24 @@ Not started
 
 ---
 
-## Phase 2: XML Parsing and Slot Cropping
+## Phase 2: COCO Annotation Parsing and Slot Preparation
 
 Goal:
-Read PKLot XML files, crop parking slots, and save labeled crops.
+Read Roboflow COCO annotations, prepare parking-slot metadata, and export a small crop sample set for visual verification.
 
 Deliverables:
-- src/data/parse_pklot_xml.py
-- src/data/crop_slots.py
-- data/processed/crops/
-- crop metadata CSV
+- src/data/coco_utils.py
+- src/data/prepare_pklot_coco.py
+- src/data/export_crop_samples.py
+- src/data/make_crop_contact_sheet.py
+- data/processed/metadata/slot_annotations.csv
+- data/processed/metadata/split_summary.csv
+- data/processed/metadata/category_summary.csv
+- data/processed/crop_samples/
+- results/figures/crop_samples_contact_sheet.jpg
 
 Status:
-Not started
+In progress
 
 ---
 

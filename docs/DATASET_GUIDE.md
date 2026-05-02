@@ -29,9 +29,62 @@ data/raw/PKLot/valid/_annotations.coco.json
 data/raw/PKLot/test/_annotations.coco.json
 ```
 
-Each split folder also contains JPG images. Phase 2 will parse COCO bounding boxes and labels to generate parking-slot crops for occupancy classification.
+Each split folder also contains JPG images. Phase 2 parses COCO bounding boxes and labels to generate project-ready parking-slot metadata for occupancy classification.
 
 XML support can remain available for original PKLot layouts, but current work should use the COCO split layout above.
+
+## Phase 2 COCO Preprocessing
+
+Phase 2 creates metadata first instead of blindly exporting every crop image. This keeps the repo practical on disk and lets later training scripts crop parking slots on the fly from known COCO boxes.
+
+Generate slot metadata CSV files:
+
+```bash
+python -m src.data.prepare_pklot_coco
+```
+
+Outputs:
+
+```text
+data/processed/metadata/slot_annotations.csv
+data/processed/metadata/split_summary.csv
+data/processed/metadata/category_summary.csv
+```
+
+The slot metadata normalizes COCO category names such as `space-empty`, `vacant`, `empty`, `space-occupied`, and `occupied` to:
+
+```text
+occupied
+vacant
+```
+
+Occupied is the positive class. Vacant is the negative class.
+
+For a quick smoke test, limit images per split:
+
+```bash
+python -m src.data.prepare_pklot_coco --limit-images 10 --output-dir data/processed/metadata_smoke
+```
+
+Export a small crop sample set for visual verification only:
+
+```bash
+python -m src.data.export_crop_samples --samples-per-class 20
+```
+
+Create a contact sheet after sample crops exist:
+
+```bash
+python -m src.data.make_crop_contact_sheet
+```
+
+Full crop export is optional and should not be run by default:
+
+```bash
+python -m src.data.export_crop_samples --export-all
+```
+
+By default, later model training should read `slot_annotations.csv` and crop from source images on the fly to avoid storing hundreds of thousands of small generated image files.
 
 ## Recommended Location
 
@@ -77,4 +130,4 @@ If the dataset is not downloaded yet, the checker will fail with instructions. T
 
 ## Next Phase
 
-Phase 2 will handle annotation parsing and parking-slot crop generation. Phase 1 only verifies that the local dataset folder has image files and recognized annotation files.
+Phase 2 handles COCO annotation parsing, parking-slot metadata generation, limited crop samples, and visual QA. Phase 1 only verifies that the local dataset folder has image files and recognized annotation files.
