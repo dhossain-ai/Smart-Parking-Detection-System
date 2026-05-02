@@ -196,6 +196,8 @@ data/processed/
 !data/processed/
 data/processed/*
 !data/processed/.gitkeep
+data/splits/*.csv
+!data/splits/.gitkeep
 archive/
 archive.zip
 *.zip
@@ -215,3 +217,4 @@ results/images/*.jpg
 results/figures/*.png
 results/figures/*.jpg
 results/figures/*.jpeg
+results/metrics/dataset_eda/
