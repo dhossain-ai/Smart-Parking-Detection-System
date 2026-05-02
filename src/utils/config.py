@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 
@@ -8,6 +9,7 @@ RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 SAMPLES_DIR = DATA_DIR / "samples"
 SPLITS_DIR = DATA_DIR / "splits"
+DEFAULT_PKLOT_DIR = RAW_DATA_DIR / "PKLot"
 
 MODELS_DIR = PROJECT_ROOT / "models"
 CLASSICAL_MODELS_DIR = MODELS_DIR / "classical"
@@ -20,3 +22,10 @@ RESULT_VIDEOS_DIR = RESULTS_DIR / "videos"
 FIGURES_DIR = RESULTS_DIR / "figures"
 
 DOCS_DIR = PROJECT_ROOT / "docs"
+
+
+def get_pklot_dir() -> Path:
+    env_path = os.environ.get("PKLOT_DATA_DIR")
+    if env_path:
+        return Path(env_path).expanduser()
+    return DEFAULT_PKLOT_DIR
