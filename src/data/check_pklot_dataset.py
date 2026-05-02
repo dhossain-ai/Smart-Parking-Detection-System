@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from src.utils.config import DEFAULT_PKLOT_DIR, get_pklot_dir
@@ -7,34 +8,52 @@ from src.utils.config import DEFAULT_PKLOT_DIR, get_pklot_dir
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 XML_EXTENSION = ".xml"
-WEATHER_KEYWORDS = ("sunny", "rainy", "cloudy", "overcast")
+COCO_ANNOTATION_NAME = "_annotations.coco.json"
+SPLIT_NAMES = ("train", "valid", "test")
 SAMPLE_LIMIT = 5
 
 
-def _collect_files(dataset_dir: Path, extensions: set[str]) -> list[Path]:
-    return sorted(
-        path
-        for path in dataset_dir.rglob("*")
-        if path.is_file() and path.suffix.lower() in extensions
-    )
+def _scan_dataset(dataset_dir: Path) -> tuple[int, int, int, list[Path], list[Path]]:
+    image_count = 0
+    xml_count = 0
+    coco_count = 0
+    image_samples: list[Path] = []
+    coco_samples: list[Path] = []
+
+    for root, _, files in os.walk(dataset_dir):
+        root_path = Path(root)
+
+        for filename in files:
+            path = root_path / filename
+            suffix = path.suffix.lower()
+
+            if suffix in IMAGE_EXTENSIONS:
+                image_count += 1
+                if len(image_samples) < SAMPLE_LIMIT:
+                    image_samples.append(path)
+            elif suffix == XML_EXTENSION:
+                xml_count += 1
+
+            if filename == COCO_ANNOTATION_NAME:
+                coco_count += 1
+                if len(coco_samples) < SAMPLE_LIMIT:
+                    coco_samples.append(path)
+
+    return image_count, xml_count, coco_count, image_samples, coco_samples
 
 
-def _detect_weather_categories(paths: list[Path], dataset_dir: Path) -> list[str]:
-    categories: set[str] = set()
+def _detect_split_folders(dataset_dir: Path) -> list[str]:
+    return [split for split in SPLIT_NAMES if (dataset_dir / split).is_dir()]
 
-    for path in paths:
-        try:
-            parts = path.relative_to(dataset_dir).parts
-        except ValueError:
-            parts = path.parts
 
-        for part in parts:
-            part_lower = part.lower()
-            for keyword in WEATHER_KEYWORDS:
-                if keyword in part_lower:
-                    categories.add(keyword)
-
-    return sorted(categories)
+def _detect_dataset_format(xml_count: int, coco_count: int) -> str:
+    if xml_count and coco_count:
+        return "mixed"
+    if xml_count:
+        return "xml"
+    if coco_count:
+        return "coco"
+    return "unknown"
 
 
 def _format_sample_paths(paths: list[Path], dataset_dir: Path) -> list[str]:
@@ -79,27 +98,26 @@ def main() -> int:
         _print_missing_instructions(dataset_dir)
         return 1
 
-    image_paths = _collect_files(dataset_dir, IMAGE_EXTENSIONS)
-    xml_paths = _collect_files(dataset_dir, {XML_EXTENSION})
-    weather_categories = _detect_weather_categories(image_paths + xml_paths, dataset_dir)
+    image_count, xml_count, coco_count, image_samples, coco_samples = _scan_dataset(dataset_dir)
+    split_folders = _detect_split_folders(dataset_dir)
+    dataset_format = _detect_dataset_format(xml_count, coco_count)
 
-    print(f"Images found: {len(image_paths)}")
-    print(f"XML files found: {len(xml_paths)}")
-    print(
-        "Weather categories detected: "
-        + (", ".join(weather_categories) if weather_categories else "None")
-    )
-    _print_samples("Sample image paths:", _format_sample_paths(image_paths, dataset_dir))
-    _print_samples("Sample XML paths:", _format_sample_paths(xml_paths, dataset_dir))
+    print(f"Images found: {image_count}")
+    print(f"XML files found: {xml_count}")
+    print(f"COCO annotation JSON files found: {coco_count}")
+    print("Splits detected: " + (", ".join(split_folders) if split_folders else "None"))
+    print(f"Dataset format: {dataset_format}")
+    _print_samples("Sample image paths:", _format_sample_paths(image_samples, dataset_dir))
+    _print_samples("Sample COCO JSON paths:", _format_sample_paths(coco_samples, dataset_dir))
 
-    if not image_paths or not xml_paths:
+    if not image_count or not (xml_count or coco_count):
         print("Dataset status: incomplete")
-        print("Expected both parking lot image files and XML annotation files.")
-        print("No XML parsing or crop generation was performed.")
+        print("Expected image files and XML or COCO annotation files.")
+        print("No annotation parsing or crop generation was performed.")
         return 2
 
     print("Dataset status: OK")
-    print("No XML parsing or crop generation was performed.")
+    print("No annotation parsing or crop generation was performed.")
     return 0
 
 
