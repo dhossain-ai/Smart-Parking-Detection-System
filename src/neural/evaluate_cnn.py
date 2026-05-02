@@ -32,9 +32,16 @@ from src.utils.config import FIGURES_DIR, PROJECT_ROOT
 
 LABELS = [0, 1]
 LABEL_NAMES = ["vacant", "occupied"]
+REQUIREMENT_THRESHOLDS = {
+    "accuracy": 0.98,
+    "precision": 0.97,
+    "recall": 0.97,
+    "f1_score": 0.97,
+}
 
 
 def false_occupancy_rate(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Actual vacant predicted as occupied divided by total actual vacant."""
     vacant_mask = y_true == 0
     total_vacant = int(vacant_mask.sum())
     if total_vacant == 0:
@@ -91,26 +98,73 @@ def predict_loader_scores(
     return y_true, predictions, occupied_scores, elapsed
 
 
+def build_threshold_sweep(
+    y_true: np.ndarray,
+    occupied_scores: np.ndarray,
+    split: str,
+) -> pd.DataFrame:
+    rows = []
+    for threshold in np.round(np.arange(0.10, 0.901, 0.01), 2):
+        predictions = (occupied_scores >= threshold).astype(np.int64)
+        metrics = compute_metrics(
+            y_true,
+            predictions,
+            split=split,
+            inference_seconds=0.0,
+        )
+        metrics["threshold"] = float(threshold)
+        rows.append(metrics)
+    return pd.DataFrame(rows)
+
+
+def threshold_meets_requirements(row: pd.Series) -> bool:
+    return all(float(row[metric]) >= required for metric, required in REQUIREMENT_THRESHOLDS.items())
+
+
+def select_threshold_from_sweep(sweep: pd.DataFrame) -> tuple[float, dict[str, Any]]:
+    candidates = sweep[sweep.apply(threshold_meets_requirements, axis=1)]
+    if not candidates.empty:
+        selected = candidates.sort_values(
+            ["f1_score", "accuracy", "precision", "recall"],
+            ascending=False,
+        ).iloc[0]
+        reason = "meets_all_requirements"
+    else:
+        recall_safe = sweep[sweep["recall"] >= REQUIREMENT_THRESHOLDS["recall"]]
+        if not recall_safe.empty:
+            selected = recall_safe.sort_values(
+                ["f1_score", "accuracy", "precision"],
+                ascending=False,
+            ).iloc[0]
+            reason = "best_f1_with_recall_at_least_0.97"
+        else:
+            selected = sweep.sort_values(["f1_score", "accuracy"], ascending=False).iloc[0]
+            reason = "best_f1_overall"
+
+    result = {
+        "selection_reason": reason,
+        "requirements_met": bool(threshold_meets_requirements(selected)),
+        "selected_validation_accuracy": float(selected["accuracy"]),
+        "selected_validation_precision": float(selected["precision"]),
+        "selected_validation_recall": float(selected["recall"]),
+        "selected_validation_f1": float(selected["f1_score"]),
+        "selected_validation_false_occupancy_rate": float(selected["false_occupancy_rate"]),
+    }
+    return float(selected["threshold"]), result
+
+
 def find_best_threshold(
     y_true: np.ndarray,
     occupied_scores: np.ndarray,
     metric: str = "f1",
 ) -> tuple[float, float]:
-    best_threshold = 0.5
-    best_score = -1.0
+    sweep = build_threshold_sweep(y_true, occupied_scores, split="valid")
+    if metric == "accuracy":
+        selected = sweep.sort_values("accuracy", ascending=False).iloc[0]
+        return float(selected["threshold"]), float(selected["accuracy"])
 
-    for threshold in np.linspace(0.05, 0.95, 91):
-        predictions = (occupied_scores >= threshold).astype(np.int64)
-        if metric == "accuracy":
-            score = accuracy_score(y_true, predictions)
-        else:
-            score = f1_score(y_true, predictions, pos_label=1, zero_division=0)
-
-        if score > best_score:
-            best_score = float(score)
-            best_threshold = float(threshold)
-
-    return best_threshold, best_score
+    threshold, selection = select_threshold_from_sweep(sweep)
+    return threshold, float(selection["selected_validation_f1"])
 
 
 def compute_metrics(
@@ -202,6 +256,31 @@ def save_training_curves(history: list[dict[str, Any]], output_path: Path) -> No
     plt.close(fig)
 
 
+def save_threshold_sweep_figure(
+    validation_sweep: pd.DataFrame,
+    selected_threshold: float,
+    output_path: Path,
+) -> None:
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    for metric, color in [
+        ("accuracy", "#3182ce"),
+        ("precision", "#805ad5"),
+        ("recall", "#dd6b20"),
+        ("f1_score", "#2f855a"),
+    ]:
+        ax.plot(validation_sweep["threshold"], validation_sweep[metric], label=metric, color=color)
+
+    ax.axvline(selected_threshold, color="#2d3748", linestyle="--", linewidth=1.2, label="selected")
+    ax.set_title("CNN Validation Threshold Sweep")
+    ax.set_xlabel("Occupied probability threshold")
+    ax.set_ylabel("Score")
+    ax.set_ylim(0.85, 1.01)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
 def save_evaluation_outputs(
     output_dir: Path,
     figures_dir: Path,
@@ -211,6 +290,8 @@ def save_evaluation_outputs(
     test_predictions: tuple[np.ndarray, np.ndarray],
     history: list[dict[str, Any]],
     extra: dict[str, Any] | None = None,
+    threshold_sweep: pd.DataFrame | None = None,
+    figure_prefix: str = "cnn",
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     figures_dir.mkdir(parents=True, exist_ok=True)
@@ -265,8 +346,18 @@ def save_evaluation_outputs(
     )
     (output_dir / "classification_report.txt").write_text(report_text, encoding="utf-8")
     save_confusion_matrix_csv(valid_matrix, test_matrix, output_dir / "confusion_matrix.csv")
-    save_confusion_matrix_figure(test_matrix, figures_dir / "cnn_confusion_matrix.png")
-    save_training_curves(history, figures_dir / "cnn_training_curves.png")
+    save_confusion_matrix_figure(test_matrix, figures_dir / f"{figure_prefix}_confusion_matrix.png")
+    save_training_curves(history, figures_dir / f"{figure_prefix}_training_curves.png")
+
+    if threshold_sweep is not None:
+        threshold_sweep.to_csv(output_dir / "threshold_sweep.csv", index=False)
+        selected_threshold = float((extra or {}).get("decision_threshold", 0.5))
+        validation_sweep = threshold_sweep.loc[threshold_sweep["split"] == "valid"]
+        save_threshold_sweep_figure(
+            validation_sweep,
+            selected_threshold=selected_threshold,
+            output_path=figures_dir / f"{figure_prefix}_threshold_sweep.png",
+        )
 
 
 def _parse_args() -> argparse.Namespace:
@@ -278,6 +369,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--output-dir", type=Path, default=Path("results/metrics/cnn"))
+    parser.add_argument("--figure-prefix", default="cnn")
     return parser.parse_args()
 
 
@@ -293,7 +385,9 @@ def main() -> int:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model = build_model(num_classes=2).to(device)
+    model_version = checkpoint.get("model_version", "v1")
+    dropout = float(checkpoint.get("dropout", 0.35 if model_version == "v1" else 0.3))
+    model = build_model(num_classes=2, model_version=model_version, dropout=dropout).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     threshold = float(checkpoint.get("decision_threshold", 0.5))
 
@@ -310,13 +404,13 @@ def main() -> int:
         num_workers=args.num_workers,
     )
 
-    y_valid, pred_valid, _, valid_seconds = predict_loader_scores(
+    y_valid, pred_valid, valid_scores, valid_seconds = predict_loader_scores(
         model,
         valid_loader,
         device,
         threshold=threshold,
     )
-    y_test, pred_test, _, test_seconds = predict_loader_scores(
+    y_test, pred_test, test_scores, test_seconds = predict_loader_scores(
         model,
         test_loader,
         device,
@@ -324,6 +418,9 @@ def main() -> int:
     )
     valid_metrics = compute_metrics(y_valid, pred_valid, "valid", valid_seconds)
     test_metrics = compute_metrics(y_test, pred_test, "test", test_seconds)
+    valid_sweep = build_threshold_sweep(y_valid, valid_scores, split="valid")
+    test_sweep = build_threshold_sweep(y_test, test_scores, split="test")
+    threshold_sweep = pd.concat([valid_sweep, test_sweep], ignore_index=True)
     output_dir = _resolve_project_path(args.output_dir)
     save_evaluation_outputs(
         output_dir=output_dir,
@@ -336,7 +433,11 @@ def main() -> int:
         extra={
             "checkpoint": readable_relative_path(checkpoint_path, PROJECT_ROOT),
             "decision_threshold": threshold,
+            "model_version": model_version,
+            "threshold_note": "Threshold is applied to occupied probability.",
         },
+        threshold_sweep=threshold_sweep,
+        figure_prefix=args.figure_prefix,
     )
     print(f"CNN evaluation complete: {readable_relative_path(output_dir, PROJECT_ROOT)}")
     return 0
