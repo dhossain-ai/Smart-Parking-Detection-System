@@ -86,6 +86,62 @@ python -m src.data.export_crop_samples --export-all
 
 By default, later model training should read `slot_annotations.csv` and crop from source images on the fly to avoid storing hundreds of thousands of small generated image files.
 
+## Phase 3 Metadata Analysis and Manifests
+
+Phase 3 analyzes the generated slot metadata from Phase 2. It validates the existing Roboflow split layout:
+
+```text
+train
+valid
+test
+```
+
+Run dataset EDA:
+
+```bash
+python -m src.data.analyze_pklot_metadata
+```
+
+This creates local CSV summaries and plots under:
+
+```text
+results/metrics/dataset_eda/
+results/figures/
+```
+
+Validate splits and sample image paths:
+
+```bash
+python -m src.data.validate_splits --check-images --max-image-checks 200
+```
+
+Prepare honest weather labels:
+
+```bash
+python -m src.data.prepare_weather_labels
+```
+
+The current Roboflow COCO export may not preserve original PKLot weather folders. Weather labels are inferred only when reliable weather tokens such as `sunny`, `rainy`, `cloudy`, or `overcast` are present in path metadata, or when a manual weather CSV is supplied. If reliable weather data is unavailable, weather is marked as `unknown`; do not invent weather labels from images or filenames.
+
+Create training manifests for later phases:
+
+```bash
+python -m src.data.create_training_manifests --samples-per-class 2000
+```
+
+This writes full local manifests plus small balanced manifests:
+
+```text
+data/splits/train_slots.csv
+data/splits/valid_slots.csv
+data/splits/test_slots.csv
+data/splits/train_slots_balanced_small.csv
+data/splits/valid_slots_balanced_small.csv
+data/splits/test_slots_balanced_small.csv
+```
+
+Generated split CSVs are ignored by Git. Later training should use these manifests and crop from the original images on the fly.
+
 ## Recommended Location
 
 Download the dataset manually from Kaggle, unzip it, and place it at:
@@ -130,4 +186,4 @@ If the dataset is not downloaded yet, the checker will fail with instructions. T
 
 ## Next Phase
 
-Phase 2 handles COCO annotation parsing, parking-slot metadata generation, limited crop samples, and visual QA. Phase 1 only verifies that the local dataset folder has image files and recognized annotation files.
+Phase 3 handles metadata EDA, split validation, optional weather-label templates, and training manifests. Phase 2 handles COCO annotation parsing, parking-slot metadata generation, limited crop samples, and visual QA.

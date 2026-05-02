@@ -54,20 +54,33 @@ Completed
 
 ---
 
-## Phase 3: Dataset Splitting and EDA
+## Phase 3: Dataset EDA, Split Validation, and Training Manifests
 
 Goal:
-Create train/validation/test splits and check class/weather balance.
+Analyze generated slot metadata, validate train/valid/test splits, prepare honest weather-label support, and create training manifests.
 
 Deliverables:
-- train.csv
-- val.csv
-- test.csv
-- weather split CSV
-- class distribution plots
+- src/data/analyze_pklot_metadata.py
+- src/data/validate_splits.py
+- src/data/weather_labels.py
+- src/data/prepare_weather_labels.py
+- src/data/create_training_manifests.py
+- results/metrics/dataset_eda/class_distribution.csv
+- results/metrics/dataset_eda/split_distribution.csv
+- results/metrics/dataset_eda/split_label_distribution.csv
+- results/metrics/dataset_eda/bbox_summary.csv
+- results/metrics/dataset_eda/image_summary.csv
+- results/metrics/dataset_eda/dataset_eda_report.md
+- results/metrics/dataset_eda/split_validation_report.md
+- data/splits/weather_labels_template.csv
+- data/splits/train_slots.csv
+- data/splits/valid_slots.csv
+- data/splits/test_slots.csv
+- data/splits/*_balanced_small.csv
+- dataset EDA figures
 
 Status:
-Not started
+In progress
 
 ---
 

@@ -60,7 +60,7 @@ docs/           # Project planning and AI context documents
 
 ## Current Status
 
-Phase 2 COCO preprocessing is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, and create metadata CSV files for later offline training.
+Phase 3 dataset analysis is implemented or in progress. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, and create local training manifests for later offline training.
 
 Model training, UI implementation, and evaluation have not started.
 
@@ -138,3 +138,33 @@ python -m src.data.export_crop_samples --export-all
 ```
 
 Later training should prefer metadata-driven on-the-fly cropping from source images. That avoids committing or storing hundreds of thousands of generated crop files.
+
+## Phase 3 Dataset Analysis Workflow
+
+Analyze the generated slot metadata:
+
+```bash
+python -m src.data.analyze_pklot_metadata
+```
+
+Validate the existing Roboflow `train`, `valid`, and `test` splits:
+
+```bash
+python -m src.data.validate_splits --check-images --max-image-checks 200
+```
+
+Prepare weather labels honestly:
+
+```bash
+python -m src.data.prepare_weather_labels
+```
+
+The Roboflow COCO export may not preserve original PKLot weather folders. Weather is inferred only from reliable path metadata or a manually supplied weather CSV. If reliable weather labels are unavailable, the project records `unknown`; no sunny, rainy, cloudy, or overcast labels should be invented.
+
+Create local manifests for later training:
+
+```bash
+python -m src.data.create_training_manifests --samples-per-class 2000
+```
+
+Full manifests are written to `data/splits/train_slots.csv`, `data/splits/valid_slots.csv`, and `data/splits/test_slots.csv`. Small balanced manifests are also created for quick experiments. These generated CSVs are ignored by Git, while training should crop slots on the fly from the original images and known bounding boxes.
