@@ -5,7 +5,13 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from skimage.feature import hog, local_binary_pattern
+
+try:
+    from skimage.feature import hog as skimage_hog
+    from skimage.feature import local_binary_pattern as skimage_local_binary_pattern
+except ModuleNotFoundError:
+    skimage_hog = None
+    skimage_local_binary_pattern = None
 
 from src.utils.config import PROJECT_ROOT, get_pklot_dir
 
@@ -71,7 +77,10 @@ def extract_lbp_features(
     points: int = 16,
 ) -> np.ndarray:
     gray = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2GRAY)
-    lbp = local_binary_pattern(gray, P=points, R=radius, method="uniform")
+    if skimage_local_binary_pattern is not None:
+        lbp = skimage_local_binary_pattern(gray, P=points, R=radius, method="uniform")
+    else:
+        lbp = _uniform_lbp_numpy(gray, radius=radius, points=points)
     bins = points + 2
     hist, _ = np.histogram(lbp.ravel(), bins=bins, range=(0, bins), density=False)
     hist = hist.astype(np.float32)
@@ -107,16 +116,60 @@ def extract_hog_features(
     cells_per_block: tuple[int, int] = (2, 2),
 ) -> np.ndarray:
     gray = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
-    features = hog(
-        gray,
-        orientations=orientations,
-        pixels_per_cell=pixels_per_cell,
-        cells_per_block=cells_per_block,
-        block_norm="L2-Hys",
-        transform_sqrt=True,
-        feature_vector=True,
-    )
+    if skimage_hog is not None:
+        features = skimage_hog(
+            gray,
+            orientations=orientations,
+            pixels_per_cell=pixels_per_cell,
+            cells_per_block=cells_per_block,
+            block_norm="L2-Hys",
+            transform_sqrt=True,
+            feature_vector=True,
+        )
+    else:
+        features = _opencv_hog(gray, orientations=orientations)
     return features.astype(np.float32)
+
+
+def _uniform_lbp_numpy(gray: np.ndarray, radius: int, points: int) -> np.ndarray:
+    height, width = gray.shape
+    center = gray.astype(np.float32)
+    yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)
+    comparisons = []
+
+    for point in range(points):
+        angle = 2.0 * np.pi * point / points
+        sample_x = xx + radius * np.cos(angle)
+        sample_y = yy - radius * np.sin(angle)
+        sampled = cv2.remap(
+            center,
+            sample_x,
+            sample_y,
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REFLECT_101,
+        )
+        comparisons.append(sampled >= center)
+
+    bits = np.stack(comparisons, axis=0)
+    transitions = np.count_nonzero(bits != np.roll(bits, shift=1, axis=0), axis=0)
+    ones = bits.sum(axis=0)
+    return np.where(transitions <= 2, ones, points + 1).astype(np.float32)
+
+
+def _opencv_hog(gray: np.ndarray, orientations: int) -> np.ndarray:
+    height, width = gray.shape
+    hog_descriptor = cv2.HOGDescriptor(
+        _winSize=(width, height),
+        _blockSize=(16, 16),
+        _blockStride=(8, 8),
+        _cellSize=(8, 8),
+        _nbins=orientations,
+    )
+    gray_uint8 = np.clip(gray * 255.0, 0, 255).astype(np.uint8)
+    features = hog_descriptor.compute(gray_uint8)
+    if features is None:
+        return np.zeros(0, dtype=np.float32)
+    return features.ravel().astype(np.float32)
 
 
 def extract_combined_features(
