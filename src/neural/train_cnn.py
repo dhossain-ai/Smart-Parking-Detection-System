@@ -21,10 +21,12 @@ except ModuleNotFoundError:
 from src.data.coco_utils import readable_relative_path
 from src.neural.dataset import PKLotSlotDataset, count_targets
 from src.neural.evaluate_cnn import (
+    build_threshold_sweep,
     compute_metrics,
-    find_best_threshold,
     predict_loader_scores,
     save_evaluation_outputs,
+    select_threshold_from_sweep,
+    threshold_meets_requirements,
 )
 from src.neural.model import build_model
 from src.utils.config import FIGURES_DIR, PROJECT_ROOT
@@ -33,23 +35,32 @@ from src.utils.config import FIGURES_DIR, PROJECT_ROOT
 DEFAULT_TRAIN_MANIFEST = Path("data/splits/train_slots_balanced_small.csv")
 DEFAULT_VALID_MANIFEST = Path("data/splits/valid_slots_balanced_small.csv")
 DEFAULT_TEST_MANIFEST = Path("data/splits/test_slots_balanced_small.csv")
-DEFAULT_OUTPUT_MODEL = Path("models/cnn/best_cnn_model.pth")
-DEFAULT_OUTPUT_DIR = Path("results/metrics/cnn")
+FULL_TRAIN_MANIFEST = Path("data/splits/train_slots.csv")
+FULL_VALID_MANIFEST = Path("data/splits/valid_slots.csv")
+FULL_TEST_MANIFEST = Path("data/splits/test_slots.csv")
+DEFAULT_OUTPUT_MODEL = Path("models/cnn/best_cnn_model_v2.pth")
+DEFAULT_OUTPUT_DIR = Path("results/metrics/cnn_tuned")
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a custom CNN for PKLot slots.")
-    parser.add_argument("--train-manifest", type=Path, default=DEFAULT_TRAIN_MANIFEST)
-    parser.add_argument("--valid-manifest", type=Path, default=DEFAULT_VALID_MANIFEST)
-    parser.add_argument("--test-manifest", type=Path, default=DEFAULT_TEST_MANIFEST)
+    parser.add_argument("--train-manifest", type=Path, default=None)
+    parser.add_argument("--valid-manifest", type=Path, default=None)
+    parser.add_argument("--test-manifest", type=Path, default=None)
+    parser.add_argument("--model-version", choices=["v1", "v2"], default="v2")
     parser.add_argument("--image-size", type=int, default=64)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument("--samples-per-class", type=int, default=None)
     parser.add_argument("--max-train-per-class", type=int, default=None)
     parser.add_argument("--max-valid-per-class", type=int, default=None)
     parser.add_argument("--max-test-per-class", type=int, default=None)
+    parser.add_argument("--weight-decay", type=float, default=0.0001)
+    parser.add_argument("--dropout", type=float, default=0.3)
+    parser.add_argument("--no-augment", action="store_true")
+    parser.add_argument("--eval-threshold", default="auto")
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-model", type=Path, default=DEFAULT_OUTPUT_MODEL)
@@ -59,6 +70,38 @@ def _parse_args() -> argparse.Namespace:
 
 def _resolve_project_path(path: Path) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def _default_manifest(split: str, samples_per_class: int | None) -> Path:
+    if samples_per_class is None:
+        return {
+            "train": DEFAULT_TRAIN_MANIFEST,
+            "valid": DEFAULT_VALID_MANIFEST,
+            "test": DEFAULT_TEST_MANIFEST,
+        }[split]
+
+    return {
+        "train": FULL_TRAIN_MANIFEST,
+        "valid": FULL_VALID_MANIFEST,
+        "test": FULL_TEST_MANIFEST,
+    }[split]
+
+
+def _per_class_limit(
+    specific_limit: int | None,
+    shared_limit: int | None,
+) -> int | None:
+    return specific_limit if specific_limit is not None else shared_limit
+
+
+def _parse_eval_threshold(value: str) -> float | None:
+    if value.strip().lower() == "auto":
+        return None
+
+    threshold = float(value)
+    if not 0.0 < threshold < 1.0:
+        raise ValueError("--eval-threshold must be 'auto' or a number between 0 and 1")
+    return threshold
 
 
 def set_random_seeds(seed: int) -> None:
@@ -157,6 +200,13 @@ def evaluate_loss_and_predictions(
 
 def train_cnn(args: argparse.Namespace) -> int:
     set_random_seeds(args.seed)
+    train_manifest = args.train_manifest or _default_manifest("train", args.samples_per_class)
+    valid_manifest = args.valid_manifest or _default_manifest("valid", args.samples_per_class)
+    test_manifest = args.test_manifest or _default_manifest("test", args.samples_per_class)
+    max_train_per_class = _per_class_limit(args.max_train_per_class, args.samples_per_class)
+    max_valid_per_class = _per_class_limit(args.max_valid_per_class, args.samples_per_class)
+    max_test_per_class = _per_class_limit(args.max_test_per_class, args.samples_per_class)
+
     output_model_path = _resolve_project_path(args.output_model)
     output_dir = _resolve_project_path(args.output_dir)
     output_model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -165,24 +215,24 @@ def train_cnn(args: argparse.Namespace) -> int:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_dataset = PKLotSlotDataset(
-        args.train_manifest,
+        train_manifest,
         image_size=args.image_size,
-        augment=True,
-        max_per_class=args.max_train_per_class,
+        augment=not args.no_augment,
+        max_per_class=max_train_per_class,
         seed=args.seed,
     )
     valid_dataset = PKLotSlotDataset(
-        args.valid_manifest,
+        valid_manifest,
         image_size=args.image_size,
         augment=False,
-        max_per_class=args.max_valid_per_class,
+        max_per_class=max_valid_per_class,
         seed=args.seed,
     )
     test_dataset = PKLotSlotDataset(
-        args.test_manifest,
+        test_manifest,
         image_size=args.image_size,
         augment=False,
-        max_per_class=args.max_test_per_class,
+        max_per_class=max_test_per_class,
         seed=args.seed,
     )
 
@@ -208,9 +258,17 @@ def train_cnn(args: argparse.Namespace) -> int:
         seed=args.seed,
     )
 
-    model = build_model(num_classes=2).to(device)
+    model = build_model(
+        num_classes=2,
+        model_version=args.model_version,
+        dropout=args.dropout,
+    ).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+    )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="max",
@@ -220,6 +278,10 @@ def train_cnn(args: argparse.Namespace) -> int:
 
     print("CNN training configuration")
     print(f"Device: {device}")
+    print(f"Model version: {args.model_version}")
+    print(f"Train manifest: {train_manifest}")
+    print(f"Valid manifest: {valid_manifest}")
+    print(f"Test manifest: {test_manifest}")
     print(f"Train records: {len(train_dataset)} {count_targets(train_dataset)}")
     print(f"Valid records: {len(valid_dataset)} {count_targets(valid_dataset)}")
     print(f"Test records: {len(test_dataset)} {count_targets(test_dataset)}")
@@ -267,7 +329,9 @@ def train_cnn(args: argparse.Namespace) -> int:
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
-                    "architecture": "ParkingSlotCNN",
+                    "architecture": "ParkingSlotCNN" if args.model_version == "v1" else "ParkingSlotCNNV2",
+                    "model_version": args.model_version,
+                    "dropout": args.dropout,
                     "image_size": args.image_size,
                     "epoch": epoch,
                     "best_valid_f1": best_valid_f1,
@@ -299,28 +363,45 @@ def train_cnn(args: argparse.Namespace) -> int:
         device,
         threshold=0.5,
     )
-    decision_threshold, threshold_valid_f1 = find_best_threshold(
-        y_valid_threshold,
-        valid_scores,
-        metric="f1",
-    )
+    valid_sweep = build_threshold_sweep(y_valid_threshold, valid_scores, split="valid")
+    fixed_threshold = _parse_eval_threshold(args.eval_threshold)
+    if fixed_threshold is None:
+        decision_threshold, threshold_selection = select_threshold_from_sweep(valid_sweep)
+    else:
+        decision_threshold = fixed_threshold
+        fixed_row = valid_sweep.loc[
+            valid_sweep["threshold"].sub(decision_threshold).abs().idxmin()
+        ]
+        threshold_selection = {
+            "selection_reason": "fixed_cli_threshold",
+            "requirements_met": bool(threshold_meets_requirements(fixed_row)),
+            "selected_validation_accuracy": float(fixed_row["accuracy"]),
+            "selected_validation_precision": float(fixed_row["precision"]),
+            "selected_validation_recall": float(fixed_row["recall"]),
+            "selected_validation_f1": float(fixed_row["f1_score"]),
+            "selected_validation_false_occupancy_rate": float(fixed_row["false_occupancy_rate"]),
+        }
+    threshold_valid_f1 = float(threshold_selection["selected_validation_f1"])
     y_valid, pred_valid, _, valid_seconds = predict_loader_scores(
         model,
         valid_loader,
         device,
         threshold=decision_threshold,
     )
-    y_test, pred_test, _, test_seconds = predict_loader_scores(
+    y_test, pred_test, test_scores, test_seconds = predict_loader_scores(
         model,
         test_loader,
         device,
         threshold=decision_threshold,
     )
+    test_sweep = build_threshold_sweep(y_test, test_scores, split="test")
+    threshold_sweep = pd.concat([valid_sweep, test_sweep], ignore_index=True)
     valid_metrics = compute_metrics(y_valid, pred_valid, "valid", valid_seconds)
     test_metrics = compute_metrics(y_test, pred_test, "test", test_seconds)
 
     for metrics in [valid_metrics, test_metrics]:
-        metrics["architecture"] = "ParkingSlotCNN"
+        metrics["architecture"] = "ParkingSlotCNN" if args.model_version == "v1" else "ParkingSlotCNNV2"
+        metrics["model_version"] = args.model_version
         metrics["image_size"] = args.image_size
         metrics["batch_size"] = args.batch_size
         metrics["epochs_completed"] = len(history)
@@ -328,17 +409,21 @@ def train_cnn(args: argparse.Namespace) -> int:
         metrics["best_valid_f1"] = best_valid_f1
         metrics["threshold_valid_f1"] = threshold_valid_f1
         metrics["decision_threshold"] = decision_threshold
+        metrics["threshold_selection_reason"] = threshold_selection["selection_reason"]
+        metrics["requirements_met"] = threshold_selection["requirements_met"]
         metrics["train_records_used"] = len(train_dataset)
         metrics["valid_records_used"] = len(valid_dataset)
         metrics["test_records_used"] = len(test_dataset)
     valid_metrics["loss"] = float(valid_loss)
 
     checkpoint["decision_threshold"] = decision_threshold
+    checkpoint["threshold_selection"] = threshold_selection
     checkpoint["threshold_valid_f1"] = threshold_valid_f1
     checkpoint["history"] = history
     torch.save(checkpoint, output_model_path)
 
     pd.DataFrame(history).to_csv(output_dir / "training_history.csv", index=False)
+    figure_prefix = "cnn_tuned" if output_dir.name == "cnn_tuned" else "cnn"
     save_evaluation_outputs(
         output_dir=output_dir,
         figures_dir=FIGURES_DIR,
@@ -350,9 +435,15 @@ def train_cnn(args: argparse.Namespace) -> int:
         extra={
             "model": readable_relative_path(output_model_path, PROJECT_ROOT),
             "device": str(device),
+            "model_version": args.model_version,
             "decision_threshold": decision_threshold,
+            "threshold_selection": threshold_selection,
             "threshold_valid_f1": threshold_valid_f1,
+            "threshold_note": "Threshold is applied to occupied probability.",
+            "confusion_matrix_layout": "Rows are actual labels, columns are predicted labels, order is vacant then occupied.",
         },
+        threshold_sweep=threshold_sweep,
+        figure_prefix=figure_prefix,
     )
 
     print("CNN training complete")
@@ -364,6 +455,8 @@ def train_cnn(args: argparse.Namespace) -> int:
         f"Decision threshold: {decision_threshold:.2f} "
         f"(validation F1={threshold_valid_f1:.4f})"
     )
+    print(f"Threshold selection: {threshold_selection['selection_reason']}")
+    print(f"Requirement met: {'Yes' if threshold_selection['requirements_met'] else 'No'}")
     print(
         "Test metrics: "
         f"accuracy={test_metrics['accuracy']:.4f} "

@@ -19,8 +19,10 @@ def _parse_args() -> argparse.Namespace:
         help="Manifest CSV to sample from.",
     )
     parser.add_argument("--samples-per-class", type=int, default=4)
+    parser.add_argument("--model-version", choices=["v1", "v2"], default="v2")
     parser.add_argument("--image-size", type=int, default=64)
     parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--dropout", type=float, default=0.3)
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
@@ -36,11 +38,16 @@ def main() -> int:
     )
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
     inputs, labels = next(iter(loader))
-    model = build_model(num_classes=2)
+    model = build_model(
+        num_classes=2,
+        model_version=args.model_version,
+        dropout=args.dropout,
+    )
     logits = model(inputs)
 
     print("CNN smoke test")
     print(f"Dataset records: {len(dataset)}")
+    print(f"Model version: {args.model_version}")
     print(f"Label counts: {count_targets(dataset)}")
     print(f"Input batch shape: {tuple(inputs.shape)}")
     print(f"Logits shape: {tuple(logits.shape)}")
