@@ -50,7 +50,7 @@ Deliverables:
 - results/figures/crop_samples_contact_sheet.jpg
 
 Status:
-In progress
+Completed
 
 ---
 
