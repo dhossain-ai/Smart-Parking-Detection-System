@@ -196,6 +196,7 @@ data/processed/
 !data/processed/
 data/processed/*
 !data/processed/.gitkeep
+data/processed/features/
 data/splits/*.csv
 !data/splits/.gitkeep
 archive/
@@ -207,6 +208,8 @@ models/**/*.pth
 models/**/*.pt
 models/**/*.pkl
 models/**/*.joblib
+models/classical/*.pkl
+models/classical/*.joblib
 
 # Generated result media
 results/videos/*.mp4
@@ -218,3 +221,5 @@ results/figures/*.png
 results/figures/*.jpg
 results/figures/*.jpeg
 results/metrics/dataset_eda/
+results/metrics/classical/
+results/figures/classical_*.png

@@ -62,7 +62,7 @@ docs/           # Project planning and AI context documents
 
 Phase 3 dataset analysis is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, and create local training manifests for later offline training.
 
-Model training, UI implementation, and evaluation have not started.
+Classical model training is implemented for Phase 4. Neural network training, UI implementation, and final model comparison have not started.
 
 ## Local Setup
 
@@ -168,3 +168,31 @@ python -m src.data.create_training_manifests --samples-per-class 2000
 ```
 
 Full manifests are written to `data/splits/train_slots.csv`, `data/splits/valid_slots.csv`, and `data/splits/test_slots.csv`. Small balanced manifests are also created for quick experiments. These generated CSVs are ignored by Git, while training should crop slots on the fly from the original images and known bounding boxes.
+
+## Phase 4 Classical Baseline Workflow
+
+The classical baseline crops slots on the fly from the original images using manifest bounding boxes. It does not require exporting all crop images.
+
+Smoke test handcrafted feature extraction:
+
+```bash
+python -m src.classical.smoke_test_features
+```
+
+Train and evaluate the default classical model:
+
+```bash
+python -m src.classical.train_classical
+```
+
+Default features are LBP texture histograms, HSV color histograms, and HOG descriptors from 64x64 slot crops. The default classifier is a Linear SVM with feature scaling.
+
+Generated local outputs:
+
+```text
+models/classical/classical_lbp_hsv_hog_svm.joblib
+results/metrics/classical/
+results/figures/classical_confusion_matrix.png
+```
+
+Model files and generated metrics are ignored by Git. Reported accuracy, precision, recall, and F1-score must come from local script output; do not fake or hand-edit metrics.

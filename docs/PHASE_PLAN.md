@@ -87,16 +87,22 @@ Completed
 ## Phase 4: Classical Model
 
 Goal:
-Train classical ML model.
+Train and evaluate a local classical ML baseline using parking-slot crops from manifests.
 
 Deliverables:
 - LBP/HSV/HOG feature extraction
-- SVM or Random Forest model
-- classical model file
-- classical metrics CSV
+- manifest-driven crop loading
+- Linear SVM baseline
+- optional RBF SVM or Random Forest
+- models/classical/classical_lbp_hsv_hog_svm.joblib
+- results/metrics/classical/classical_metrics.csv
+- results/metrics/classical/classical_metrics.json
+- results/metrics/classical/classification_report.txt
+- results/metrics/classical/confusion_matrix.csv
+- results/figures/classical_confusion_matrix.png
 
 Status:
-Not started
+In progress
 
 ---
 

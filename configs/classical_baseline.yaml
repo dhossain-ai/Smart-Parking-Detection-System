@@ -1,0 +1,7 @@
+train_manifest: data/splits/train_slots_balanced_small.csv
+valid_manifest: data/splits/valid_slots_balanced_small.csv
+test_manifest: data/splits/test_slots_balanced_small.csv
+image_size: 64
+feature_set: lbp_hsv_hog
+classifier: linear_svm
+seed: 42
