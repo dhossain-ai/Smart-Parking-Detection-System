@@ -126,7 +126,7 @@ Deliverables:
 - results/figures/cnn_training_curves.png
 
 Status:
-In progress
+Partially completed
 
 ---
 

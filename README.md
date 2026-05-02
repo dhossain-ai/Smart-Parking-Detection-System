@@ -62,7 +62,7 @@ docs/           # Project planning and AI context documents
 
 Phase 3 dataset analysis is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, and create local training manifests for later offline training.
 
-Classical model training and evaluation are implemented for Phase 4. Custom CNN training is implemented for Phase 5. UI implementation and final model comparison have not started.
+Classical model training and evaluation are implemented for Phase 4. Custom CNN training and evaluation are implemented for Phase 5, with further tuning still needed to meet every neural target. UI implementation and final model comparison have not started.
 
 ## Local Setup
 
