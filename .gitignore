@@ -196,6 +196,9 @@ data/processed/
 !data/processed/
 data/processed/*
 !data/processed/.gitkeep
+archive/
+archive.zip
+*.zip
 
 # Local model artifacts
 models/**/*.pth
