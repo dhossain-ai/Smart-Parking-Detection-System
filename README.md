@@ -60,15 +60,40 @@ docs/           # Project planning and AI context documents
 
 ## Current Status
 
-Phase 0 setup is complete or in progress. The repository scaffold, documentation, dependency list, basic path configuration, and setup validation script are the only intended deliverables at this phase.
+Phase 1 dataset setup is complete or in progress. The repository can point to a local PKLot dataset and verify that image/XML files are present.
 
 Dataset processing, model training, UI implementation, and evaluation have not started.
 
 ## Local Setup
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python -m src.utils.check_setup
+python3 -m src.utils.check_setup
 ```
+
+## Phase 1 Dataset Setup
+
+Download the PKLot Dataset manually from Kaggle and unzip it into:
+
+```text
+data/raw/PKLot/
+```
+
+Alternatively, set a custom dataset path:
+
+```bash
+export PKLOT_DATA_DIR=/absolute/path/to/PKLot
+```
+
+The full dataset is ignored by Git and should not be committed.
+
+Check the local setup and dataset location with:
+
+```bash
+python3 -m src.utils.check_setup
+python3 -m src.data.check_pklot_dataset
+```
+
+If PKLot has not been downloaded or unzipped yet, the dataset checker will fail with setup instructions. That is expected before the local dataset is available.
