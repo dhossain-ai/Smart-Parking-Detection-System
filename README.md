@@ -62,7 +62,7 @@ docs/           # Project planning and AI context documents
 
 Phase 3 dataset analysis is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, and create local training manifests for later offline training.
 
-Classical model training and evaluation are implemented for Phase 4. Custom CNN training and evaluation are implemented for Phase 5, with further tuning still needed to meet every neural target. UI implementation and final model comparison have not started.
+Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. UI implementation and final model comparison have not started.
 
 ## Local Setup
 
@@ -230,3 +230,31 @@ results/figures/cnn_training_curves.png
 ```
 
 CNN checkpoints and generated metrics are ignored by Git. Neural metrics should only be reported from real local training/evaluation runs.
+
+## Phase 5B CNN Tuning Workflow
+
+The tuned CNN workflow adds a `v2` architecture option and a threshold sweep to reduce false occupancy predictions while keeping occupied-slot recall high.
+
+Run the V2 smoke test:
+
+```bash
+python -m src.neural.smoke_test_cnn
+```
+
+Run a tuned CPU-safe experiment:
+
+```bash
+python -m src.neural.train_cnn --model-version v2 --epochs 8 --batch-size 64 --samples-per-class 2000 --patience 3 --weight-decay 0.0001 --output-model models/cnn/best_cnn_model_v2.pth --output-dir results/metrics/cnn_tuned
+```
+
+Tuned outputs are saved separately:
+
+```text
+models/cnn/best_cnn_model_v2.pth
+results/metrics/cnn_tuned/
+results/figures/cnn_tuned_confusion_matrix.png
+results/figures/cnn_tuned_training_curves.png
+results/figures/cnn_tuned_threshold_sweep.png
+```
+
+The threshold sweep is selected from validation metrics and saved locally. Do not claim the neural requirement is met unless the generated tuned metrics prove it.

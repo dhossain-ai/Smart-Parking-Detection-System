@@ -109,7 +109,7 @@ Completed
 ## Phase 5: Neural Network Model
 
 Goal:
-Train and evaluate a custom local CNN using parking-slot crops from manifests.
+Train, tune, and evaluate a custom local CNN using parking-slot crops from manifests.
 
 Deliverables:
 - PyTorch dataset class
@@ -124,6 +124,10 @@ Deliverables:
 - results/metrics/cnn/confusion_matrix.csv
 - results/figures/cnn_confusion_matrix.png
 - results/figures/cnn_training_curves.png
+- tuned V2 CNN option
+- validation/test threshold sweep
+- results/metrics/cnn_tuned/threshold_sweep.csv
+- results/figures/cnn_tuned_threshold_sweep.png
 
 Status:
 Partially completed
