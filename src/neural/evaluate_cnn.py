@@ -65,6 +65,54 @@ def predict_loader(
     return np.concatenate(all_targets), np.concatenate(all_predictions), elapsed
 
 
+@torch.no_grad()
+def predict_loader_scores(
+    model: torch.nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    threshold: float = 0.5,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    model.eval()
+    all_targets: list[np.ndarray] = []
+    all_scores: list[np.ndarray] = []
+    start = time.perf_counter()
+
+    for inputs, targets in loader:
+        inputs = inputs.to(device)
+        logits = model(inputs)
+        scores = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
+        all_scores.append(scores)
+        all_targets.append(targets.numpy())
+
+    elapsed = time.perf_counter() - start
+    y_true = np.concatenate(all_targets)
+    occupied_scores = np.concatenate(all_scores)
+    predictions = (occupied_scores >= threshold).astype(np.int64)
+    return y_true, predictions, occupied_scores, elapsed
+
+
+def find_best_threshold(
+    y_true: np.ndarray,
+    occupied_scores: np.ndarray,
+    metric: str = "f1",
+) -> tuple[float, float]:
+    best_threshold = 0.5
+    best_score = -1.0
+
+    for threshold in np.linspace(0.05, 0.95, 91):
+        predictions = (occupied_scores >= threshold).astype(np.int64)
+        if metric == "accuracy":
+            score = accuracy_score(y_true, predictions)
+        else:
+            score = f1_score(y_true, predictions, pos_label=1, zero_division=0)
+
+        if score > best_score:
+            best_score = float(score)
+            best_threshold = float(threshold)
+
+    return best_threshold, best_score
+
+
 def compute_metrics(
     y_true: np.ndarray,
     y_pred: np.ndarray,
@@ -247,6 +295,7 @@ def main() -> int:
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model = build_model(num_classes=2).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
+    threshold = float(checkpoint.get("decision_threshold", 0.5))
 
     valid_loader = DataLoader(
         PKLotSlotDataset(args.valid_manifest, image_size=args.image_size, augment=False),
@@ -261,8 +310,18 @@ def main() -> int:
         num_workers=args.num_workers,
     )
 
-    y_valid, pred_valid, valid_seconds = predict_loader(model, valid_loader, device)
-    y_test, pred_test, test_seconds = predict_loader(model, test_loader, device)
+    y_valid, pred_valid, _, valid_seconds = predict_loader_scores(
+        model,
+        valid_loader,
+        device,
+        threshold=threshold,
+    )
+    y_test, pred_test, _, test_seconds = predict_loader_scores(
+        model,
+        test_loader,
+        device,
+        threshold=threshold,
+    )
     valid_metrics = compute_metrics(y_valid, pred_valid, "valid", valid_seconds)
     test_metrics = compute_metrics(y_test, pred_test, "test", test_seconds)
     output_dir = _resolve_project_path(args.output_dir)
@@ -274,7 +333,10 @@ def main() -> int:
         valid_predictions=(y_valid, pred_valid),
         test_predictions=(y_test, pred_test),
         history=checkpoint.get("history", []),
-        extra={"checkpoint": readable_relative_path(checkpoint_path, PROJECT_ROOT)},
+        extra={
+            "checkpoint": readable_relative_path(checkpoint_path, PROJECT_ROOT),
+            "decision_threshold": threshold,
+        },
     )
     print(f"CNN evaluation complete: {readable_relative_path(output_dir, PROJECT_ROOT)}")
     return 0

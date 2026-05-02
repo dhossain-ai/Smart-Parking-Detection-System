@@ -22,7 +22,8 @@ from src.data.coco_utils import readable_relative_path
 from src.neural.dataset import PKLotSlotDataset, count_targets
 from src.neural.evaluate_cnn import (
     compute_metrics,
-    predict_loader,
+    find_best_threshold,
+    predict_loader_scores,
     save_evaluation_outputs,
 )
 from src.neural.model import build_model
@@ -292,7 +293,29 @@ def train_cnn(args: argparse.Namespace) -> int:
         criterion,
         device,
     )
-    y_test, pred_test, test_seconds = predict_loader(model, test_loader, device)
+    y_valid_threshold, _, valid_scores, _ = predict_loader_scores(
+        model,
+        valid_loader,
+        device,
+        threshold=0.5,
+    )
+    decision_threshold, threshold_valid_f1 = find_best_threshold(
+        y_valid_threshold,
+        valid_scores,
+        metric="f1",
+    )
+    y_valid, pred_valid, _, valid_seconds = predict_loader_scores(
+        model,
+        valid_loader,
+        device,
+        threshold=decision_threshold,
+    )
+    y_test, pred_test, _, test_seconds = predict_loader_scores(
+        model,
+        test_loader,
+        device,
+        threshold=decision_threshold,
+    )
     valid_metrics = compute_metrics(y_valid, pred_valid, "valid", valid_seconds)
     test_metrics = compute_metrics(y_test, pred_test, "test", test_seconds)
 
@@ -303,10 +326,17 @@ def train_cnn(args: argparse.Namespace) -> int:
         metrics["epochs_completed"] = len(history)
         metrics["best_epoch"] = best_epoch
         metrics["best_valid_f1"] = best_valid_f1
+        metrics["threshold_valid_f1"] = threshold_valid_f1
+        metrics["decision_threshold"] = decision_threshold
         metrics["train_records_used"] = len(train_dataset)
         metrics["valid_records_used"] = len(valid_dataset)
         metrics["test_records_used"] = len(test_dataset)
     valid_metrics["loss"] = float(valid_loss)
+
+    checkpoint["decision_threshold"] = decision_threshold
+    checkpoint["threshold_valid_f1"] = threshold_valid_f1
+    checkpoint["history"] = history
+    torch.save(checkpoint, output_model_path)
 
     pd.DataFrame(history).to_csv(output_dir / "training_history.csv", index=False)
     save_evaluation_outputs(
@@ -320,6 +350,8 @@ def train_cnn(args: argparse.Namespace) -> int:
         extra={
             "model": readable_relative_path(output_model_path, PROJECT_ROOT),
             "device": str(device),
+            "decision_threshold": decision_threshold,
+            "threshold_valid_f1": threshold_valid_f1,
         },
     )
 
@@ -328,6 +360,10 @@ def train_cnn(args: argparse.Namespace) -> int:
     print(f"Metrics: {readable_relative_path(output_dir / 'cnn_metrics.csv', PROJECT_ROOT)}")
     print(f"Epochs completed: {len(history)}")
     print(f"Best validation F1: {best_valid_f1:.4f} at epoch {best_epoch}")
+    print(
+        f"Decision threshold: {decision_threshold:.2f} "
+        f"(validation F1={threshold_valid_f1:.4f})"
+    )
     print(
         "Test metrics: "
         f"accuracy={test_metrics['accuracy']:.4f} "
