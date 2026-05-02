@@ -139,8 +139,8 @@ def _uniform_lbp_numpy(gray: np.ndarray, radius: int, points: int) -> np.ndarray
 
     for point in range(points):
         angle = 2.0 * np.pi * point / points
-        sample_x = xx + radius * np.cos(angle)
-        sample_y = yy - radius * np.sin(angle)
+        sample_x = (xx + radius * np.cos(angle)).astype(np.float32)
+        sample_y = (yy - radius * np.sin(angle)).astype(np.float32)
         sampled = cv2.remap(
             center,
             sample_x,
