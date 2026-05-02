@@ -179,3 +179,34 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Smart Parking Detection System
+*.pyc
+.venv/
+.env
+.ipynb_checkpoints/
+.DS_Store
+
+# Local datasets and generated data
+data/raw/
+!data/raw/
+data/raw/*
+!data/raw/.gitkeep
+data/processed/
+!data/processed/
+data/processed/*
+!data/processed/.gitkeep
+
+# Local model artifacts
+models/**/*.pth
+models/**/*.pt
+models/**/*.pkl
+models/**/*.joblib
+
+# Generated result media
+results/videos/*.mp4
+results/videos/*.avi
+results/videos/*.mov
+results/images/*.png
+results/images/*.jpg
+results/figures/*.png
