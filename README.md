@@ -7,7 +7,7 @@ The goal is to classify each annotated parking slot as:
 - Vacant
 - Occupied
 
-This project uses known parking-slot coordinates from PKLot XML annotations or saved local calibration files. It is not a general car detector.
+This project uses known parking-slot coordinates from the local PKLot annotations or saved local calibration files. The current local dataset is a Roboflow COCO export detected by `_annotations.coco.json` files. It is not a general car detector.
 
 ## Offline Constraint
 
@@ -60,7 +60,7 @@ docs/           # Project planning and AI context documents
 
 ## Current Status
 
-Phase 1 dataset setup is complete or in progress. The repository can point to a local PKLot dataset and verify that image/XML files are present.
+Phase 1B dataset setup is complete or in progress. The repository can point to a local PKLot dataset and verify that image files plus XML or COCO annotations are present.
 
 Dataset processing, model training, UI implementation, and evaluation have not started.
 
@@ -94,6 +94,14 @@ Check the local setup and dataset location with:
 ```bash
 python3 -m src.utils.check_setup
 python3 -m src.data.check_pklot_dataset
+```
+
+For the current Roboflow COCO version, the checker detects:
+
+```text
+data/raw/PKLot/train/_annotations.coco.json
+data/raw/PKLot/valid/_annotations.coco.json
+data/raw/PKLot/test/_annotations.coco.json
 ```
 
 If PKLot has not been downloaded or unzipped yet, the dataset checker will fail with setup instructions. That is expected before the local dataset is available.

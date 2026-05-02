@@ -48,9 +48,11 @@ Allowed libraries:
 
 Dataset: PKLot Dataset from Kaggle.
 
-The dataset contains parking lot surveillance images and XML annotations.
+The dataset contains parking lot surveillance images and annotations.
 
-The XML annotation files provide parking slot coordinates and occupancy labels.
+The current local dataset is the Roboflow COCO export of PKLot, using train/valid/test folders and `_annotations.coco.json` files.
+
+Original XML annotation support may be kept as optional, but current work should use COCO annotations. Annotation files provide parking slot coordinates and occupancy labels.
 
 The system should use known parking slot coordinates from annotations or saved calibration JSON files.
 

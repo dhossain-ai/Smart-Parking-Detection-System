@@ -8,7 +8,7 @@ Do not commit the full PKLot dataset to GitHub.
 
 ## Expected Contents
 
-The PKLot dataset contains parking lot surveillance images and XML annotation files. The XML files provide parking-slot coordinates and occupancy labels.
+The PKLot dataset contains parking lot surveillance images and annotation files. Original PKLot-style exports may use XML annotation files with parking-slot coordinates and occupancy labels.
 
 Depending on the archive layout, the dataset may include weather or category folders with names such as:
 
@@ -18,6 +18,20 @@ Depending on the archive layout, the dataset may include weather or category fol
 - Overcast
 
 Exact local counts should only be trusted after running the dataset checker.
+
+## Roboflow/COCO PKLot Version
+
+The current local dataset is the Roboflow COCO export of PKLot. It uses split folders and COCO annotation JSON files:
+
+```text
+data/raw/PKLot/train/_annotations.coco.json
+data/raw/PKLot/valid/_annotations.coco.json
+data/raw/PKLot/test/_annotations.coco.json
+```
+
+Each split folder also contains JPG images. Phase 2 will parse COCO bounding boxes and labels to generate parking-slot crops for occupancy classification.
+
+XML support can remain available for original PKLot layouts, but current work should use the COCO split layout above.
 
 ## Recommended Location
 
@@ -63,4 +77,4 @@ If the dataset is not downloaded yet, the checker will fail with instructions. T
 
 ## Next Phase
 
-Phase 2 will handle XML parsing and parking-slot crop generation. Phase 1 only verifies that the local dataset folder has image files and XML annotation files.
+Phase 2 will handle annotation parsing and parking-slot crop generation. Phase 1 only verifies that the local dataset folder has image files and recognized annotation files.

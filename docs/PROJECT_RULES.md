@@ -17,7 +17,7 @@
 
 - This project is parking-slot occupancy classification using PKLot annotations.
 - It is not a general YOLO-style vehicle detection project.
-- Use XML annotations or saved local calibration coordinates for parking-slot regions.
+- Use current COCO annotations, optional XML annotations, or saved local calibration coordinates for parking-slot regions.
 - Keep both required methods: classical features with SVM or Random Forest, and a local CNN.
 - Occupied is the positive class; vacant is the negative class.
 
