@@ -80,7 +80,7 @@ Deliverables:
 - dataset EDA figures
 
 Status:
-In progress
+Completed
 
 ---
 
