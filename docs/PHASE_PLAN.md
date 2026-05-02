@@ -109,17 +109,24 @@ Completed
 ## Phase 5: Neural Network Model
 
 Goal:
-Train CNN model.
+Train and evaluate a custom local CNN using parking-slot crops from manifests.
 
 Deliverables:
 - PyTorch dataset class
-- CNN model
-- training script
-- saved CNN weights
-- CNN metrics CSV
+- compact custom CNN model
+- training script with augmentation and early stopping
+- reusable CNN evaluation utilities
+- CNN smoke test
+- models/cnn/best_cnn_model.pth
+- results/metrics/cnn/cnn_metrics.csv
+- results/metrics/cnn/cnn_metrics.json
+- results/metrics/cnn/classification_report.txt
+- results/metrics/cnn/confusion_matrix.csv
+- results/figures/cnn_confusion_matrix.png
+- results/figures/cnn_training_curves.png
 
 Status:
-Not started
+In progress
 
 ---
 

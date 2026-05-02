@@ -210,6 +210,8 @@ models/**/*.pkl
 models/**/*.joblib
 models/classical/*.pkl
 models/classical/*.joblib
+models/cnn/*.pth
+models/cnn/*.pt
 
 # Generated result media
 results/videos/*.mp4
@@ -223,3 +225,5 @@ results/figures/*.jpeg
 results/metrics/dataset_eda/
 results/metrics/classical/
 results/figures/classical_*.png
+results/metrics/cnn/
+results/figures/cnn_*.png

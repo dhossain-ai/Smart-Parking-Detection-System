@@ -62,7 +62,7 @@ docs/           # Project planning and AI context documents
 
 Phase 3 dataset analysis is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, and create local training manifests for later offline training.
 
-Classical model training and evaluation are implemented for Phase 4. Neural network training, UI implementation, and final model comparison have not started.
+Classical model training and evaluation are implemented for Phase 4. Custom CNN training is implemented for Phase 5. UI implementation and final model comparison have not started.
 
 ## Local Setup
 
@@ -196,3 +196,37 @@ results/figures/classical_confusion_matrix.png
 ```
 
 Model files and generated metrics are ignored by Git. Reported accuracy, precision, recall, and F1-score must come from local script output; do not fake or hand-edit metrics.
+
+## Phase 5 CNN Baseline Workflow
+
+The neural baseline is a custom local CNN trained from scratch. It does not download pretrained weights and does not use online inference services.
+
+Smoke test the dataset and model path:
+
+```bash
+python -m src.neural.smoke_test_cnn
+```
+
+Train and evaluate the default CNN:
+
+```bash
+python -m src.neural.train_cnn
+```
+
+The CNN reads the same manifest CSVs as the classical baseline, crops parking slots on the fly from original images, resizes crops to 64x64, applies local training augmentations, and predicts:
+
+```text
+0 = vacant
+1 = occupied
+```
+
+Generated local outputs:
+
+```text
+models/cnn/best_cnn_model.pth
+results/metrics/cnn/
+results/figures/cnn_confusion_matrix.png
+results/figures/cnn_training_curves.png
+```
+
+CNN checkpoints and generated metrics are ignored by Git. Neural metrics should only be reported from real local training/evaluation runs.
