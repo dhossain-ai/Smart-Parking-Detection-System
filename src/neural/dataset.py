@@ -77,16 +77,16 @@ class PKLotSlotDataset(Dataset):
     def _augment(self, crop_rgb: np.ndarray) -> np.ndarray:
         crop = crop_rgb.astype(np.float32)
 
-        contrast = float(self.rng.uniform(0.85, 1.15))
-        brightness = float(self.rng.uniform(-18.0, 18.0))
+        contrast = float(self.rng.uniform(0.9, 1.1))
+        brightness = float(self.rng.uniform(-12.0, 12.0))
         crop = crop * contrast + brightness
 
         if self.allow_horizontal_flip and self.rng.random() < 0.5:
             crop = np.ascontiguousarray(crop[:, ::-1, :])
 
-        angle = float(self.rng.uniform(-7.0, 7.0))
-        shift_x = float(self.rng.uniform(-0.06, 0.06) * self.image_size)
-        shift_y = float(self.rng.uniform(-0.06, 0.06) * self.image_size)
+        angle = float(self.rng.uniform(-5.0, 5.0))
+        shift_x = float(self.rng.uniform(-0.04, 0.04) * self.image_size)
+        shift_y = float(self.rng.uniform(-0.04, 0.04) * self.image_size)
         center = (self.image_size / 2.0, self.image_size / 2.0)
         matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
         matrix[0, 2] += shift_x
@@ -98,6 +98,9 @@ class PKLotSlotDataset(Dataset):
             flags=cv2.INTER_LINEAR,
             borderMode=cv2.BORDER_REFLECT_101,
         )
+
+        if self.rng.random() < 0.08:
+            crop = cv2.GaussianBlur(crop, (3, 3), sigmaX=0.4)
 
         return np.clip(crop, 0, 255).astype(np.uint8)
 
