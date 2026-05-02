@@ -102,7 +102,7 @@ Deliverables:
 - results/figures/classical_confusion_matrix.png
 
 Status:
-In progress
+Completed
 
 ---
 
