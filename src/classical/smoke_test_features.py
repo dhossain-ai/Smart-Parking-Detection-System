@@ -5,7 +5,12 @@ from collections import Counter
 from pathlib import Path
 
 import numpy as np
-from tqdm import tqdm
+
+try:
+    from tqdm import tqdm
+except ModuleNotFoundError:
+    def tqdm(iterable, **_: object):
+        return iterable
 
 from src.classical.dataset import load_manifest_records
 from src.classical.features import FeatureConfig, extract_features_from_record

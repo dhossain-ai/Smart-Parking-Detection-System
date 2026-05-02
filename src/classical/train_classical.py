@@ -26,7 +26,12 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC, SVC
-from tqdm import tqdm
+
+try:
+    from tqdm import tqdm
+except ModuleNotFoundError:
+    def tqdm(iterable, **_: object):
+        return iterable
 
 from src.classical.dataset import SlotRecord, load_manifest_records, targets_from_records
 from src.classical.features import FeatureConfig, extract_features_from_record
