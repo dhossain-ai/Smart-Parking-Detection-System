@@ -202,6 +202,7 @@ data/splits/*.csv
 archive/
 archive.zip
 *.zip
+.streamlit/secrets.toml
 
 # Local model artifacts
 models/**/*.pth
