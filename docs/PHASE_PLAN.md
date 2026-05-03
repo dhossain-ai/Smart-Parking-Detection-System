@@ -188,15 +188,26 @@ Notes:
 ## Phase 8: Video Detection Demo
 
 Goal:
-Process a short video frame by frame.
+Create an annotated frame-sequence video demo from multiple PKLot test images.
 
 Deliverables:
 - demo_video.py
 - annotated output video
 - occupancy trend data
+- side-by-side original/processed video
+- frame-level prediction CSV
+- video summary JSON
+- CNN and classical video prediction support
 
 Status:
-Not started
+Completed
+
+Notes:
+- The current Roboflow COCO export contains annotated image frames, not real video files.
+- Phase 8 therefore creates an honest annotated frame-sequence video demo from multiple test images.
+- Default demo uses the tuned CNN V2 checkpoint and saved threshold; the classical model is also supported.
+- Arbitrary real video requires calibrated parking-slot coordinates for the camera view.
+- Generated MP4 files and video prediction outputs are local ignored artifacts.
 
 ---
 

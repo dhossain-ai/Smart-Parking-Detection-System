@@ -67,9 +67,9 @@ docs/           # Project planning and AI context documents
 
 ## Current Status
 
-Phase 7 image detection demo is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, create local training manifests, train/evaluate the classical model, train/tune the local CNN, produce comparison tables/reports from saved metrics, and create annotated image-demo outputs from known parking-slot boxes.
+Phase 8 video-style detection demo is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, create local training manifests, train/evaluate the classical model, train/tune the local CNN, produce comparison tables/reports from saved metrics, create annotated image-demo outputs, and create annotated frame-sequence video demos from known parking-slot boxes.
 
-Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. Phase 6 comparison is completed using the best available real CNN result. Phase 7 image demo is completed for both tuned CNN and classical model selection. Video and UI implementation have not started.
+Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. Phase 6 comparison is completed using the best available real CNN result. Phase 7 image demo and Phase 8 frame-sequence video demo are completed for both tuned CNN and classical model selection. Streamlit UI implementation has not started.
 
 Weather labels are unavailable in the current Roboflow COCO export, so weather robustness is prepared as a workflow/template rather than reported with fake sunny/rainy/cloudy accuracy values. Further CNN training and tuning can be done later.
 
@@ -328,3 +328,32 @@ results/metrics/demo_image/
 ```
 
 Generated demo images, prediction CSVs, and summary JSON files are local ignored outputs.
+
+## Phase 8 Video Demo Workflow
+
+Create an annotated frame-sequence video demo with the tuned CNN:
+
+```bash
+python -m src.visualization.demo_video
+python -m src.visualization.demo_video --model-type cnn --num-frames 60
+```
+
+Create an annotated frame-sequence video demo with the classical model:
+
+```bash
+python -m src.visualization.demo_video --model-type classical --num-frames 30
+```
+
+The current Roboflow COCO export contains annotated image frames, not real continuous video files. The video demo therefore selects multiple annotated PKLot test images, predicts parking-slot occupancy for each frame, draws green vacant overlays and red occupied overlays, and writes an MP4 video plus a side-by-side original/processed MP4.
+
+Default outputs:
+
+```text
+results/videos/demo_video_cnn_output.mp4
+results/videos/demo_video_cnn_side_by_side.mp4
+results/videos/demo_video_classical_output.mp4
+results/videos/demo_video_classical_side_by_side.mp4
+results/metrics/demo_video/
+```
+
+Frame-level occupancy trends and prediction CSVs are saved under `results/metrics/demo_video/`. Arbitrary external videos require calibrated parking-slot coordinates for that camera view. Generated videos and video prediction outputs are local ignored artifacts.
