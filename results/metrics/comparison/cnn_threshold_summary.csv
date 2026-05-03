@@ -1,0 +1,5 @@
+summary_type,split,threshold,accuracy,precision,recall,f1_score,false_occupancy_rate,note
+selected_threshold,valid,0.48,0.97150,0.94777,0.99800,0.97224,0.05500,Selected threshold from saved CNN metrics.
+best_f1_threshold,valid,0.48,0.97150,0.94777,0.99800,0.97224,0.05500,Best validation F1 threshold in sweep.
+best_precision_recall_ge_0.97,valid,0.68,0.96500,0.95790,0.97275,0.96527,0.04275,Best precision threshold with validation recall >= 0.97.
+meets_all_cnn_requirements,valid,NA,NA,NA,NA,NA,NA,No threshold in the sweep satisfied all CNN requirements.

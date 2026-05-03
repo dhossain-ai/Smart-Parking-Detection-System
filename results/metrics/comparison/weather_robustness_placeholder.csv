@@ -1,0 +1,4 @@
+weather,classical_accuracy,cnn_accuracy,note
+sunny,NA,NA,weather labels unavailable in current COCO export
+rainy,NA,NA,weather labels unavailable in current COCO export
+cloudy,NA,NA,weather labels unavailable in current COCO export
