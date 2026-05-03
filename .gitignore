@@ -181,6 +181,7 @@ cython_debug/
 .cursorindexingignore
 
 # Smart Parking Detection System
+.kilo/
 *.pyc
 .venv/
 .env
