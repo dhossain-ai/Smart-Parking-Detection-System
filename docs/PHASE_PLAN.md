@@ -145,9 +145,18 @@ Deliverables:
 - weather robustness table
 - speed comparison
 - false occupancy rate
+- unified model comparison report
+- requirement checklist
+- slide-ready summary
 
 Status:
-Not started
+Completed
+
+Notes:
+- Classical model meets the assignment minimum requirements.
+- Current tuned CNN is strong but partially meets the CNN requirements; it exceeds recall and F1-score targets, but remains below the strict accuracy and precision targets.
+- Weather labels are unavailable in the current Roboflow COCO export, so weather robustness is prepared as a template/workflow instead of reported with invented weather-wise metrics.
+- Further CNN training and tuning can continue later.
 
 ---
 

@@ -110,3 +110,24 @@ results/figures/cnn_tuned_threshold_sweep.png
 ```
 
 Threshold selection is based on validation results. It first looks for thresholds that meet all neural targets, then falls back to the best F1 threshold with recall at least 0.97. Tuned results should be used only if the saved metrics genuinely improve the baseline.
+
+## Phase 6 Comparison Status
+
+Phase 6 compares the saved classical metrics against the best available saved CNN metrics:
+
+```bash
+python -m src.evaluation.compare_models
+```
+
+The current tuned CNN V2 result is strong but only partially meets the professor's CNN target. It exceeds recall and F1-score requirements, but accuracy and precision are still below the strict CNN thresholds:
+
+```text
+accuracy: 0.97300, target > 0.98
+precision: 0.95372, target > 0.97
+recall: 0.99425, target > 0.97
+F1-score: 0.97356, target > 0.97
+```
+
+Do not claim the CNN fully meets requirements until a real local run satisfies all four target metrics. Further CNN training can continue later with larger samples, additional threshold tuning, or architecture/augmentation refinement.
+
+Weather robustness is not reported with numeric CNN accuracy because the current Roboflow COCO export does not preserve reliable weather labels. The project keeps `data/splits/weather_labels_template.csv` for optional manual labeling before any weather-wise results are claimed.

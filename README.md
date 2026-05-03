@@ -31,7 +31,14 @@ Professor target metrics:
 
 Additional evaluation should include inference speed, weather-wise robustness, confusion matrices, and false occupancy rate.
 
-No metrics are reported yet because models have not been trained or evaluated.
+Current local results from saved Phase 4, Phase 5, and Phase 6 outputs:
+
+| Method | Accuracy | Precision | Recall | F1-score | Requirement status |
+|---|---:|---:|---:|---:|---|
+| Classical LBP + HSV + HOG + LinearSVC | 0.94025 | 0.93871 | 0.94200 | 0.94035 | Met |
+| Tuned CNN V2 | 0.97300 | 0.95372 | 0.99425 | 0.97356 | Partially met |
+
+The classical method meets the assignment minimum requirements. The current tuned CNN exceeds recall and F1-score requirements but is still below the professor's strict accuracy and precision targets, so it must not be described as fully meeting the CNN requirement yet.
 
 ## Repository Structure
 
@@ -60,9 +67,11 @@ docs/           # Project planning and AI context documents
 
 ## Current Status
 
-Phase 3 dataset analysis is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, and create local training manifests for later offline training.
+Phase 6 model comparison is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, create local training manifests, train/evaluate the classical model, train/tune the local CNN, and produce comparison tables/reports from saved metrics.
 
-Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. UI implementation and final model comparison have not started.
+Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. Phase 6 comparison is completed using the best available real CNN result. UI implementation has not started.
+
+Weather labels are unavailable in the current Roboflow COCO export, so weather robustness is prepared as a workflow/template rather than reported with fake sunny/rainy/cloudy accuracy values. Further CNN training and tuning can be done later.
 
 ## Local Setup
 
@@ -258,3 +267,35 @@ results/figures/cnn_tuned_threshold_sweep.png
 ```
 
 The threshold sweep is selected from validation metrics and saved locally. Do not claim the neural requirement is met unless the generated tuned metrics prove it.
+
+## Phase 6 Evaluation Comparison Workflow
+
+Generate comparison tables, markdown reports, and slide/app figures from saved metrics:
+
+```bash
+python -m src.evaluation.compare_models
+```
+
+Default inputs:
+
+```text
+results/metrics/classical/classical_metrics.json
+results/metrics/cnn_tuned/cnn_metrics.json
+```
+
+If tuned CNN metrics are unavailable, the comparison script falls back to:
+
+```text
+results/metrics/cnn/cnn_metrics.json
+```
+
+Generated comparison outputs:
+
+```text
+results/metrics/comparison/
+results/figures/model_metrics_comparison.png
+results/figures/requirement_checklist.png
+results/figures/false_occupancy_comparison.png
+```
+
+The Phase 6 report states that the classical model meets requirements and the current tuned CNN partially meets requirements. It also records that weather-wise robustness cannot be honestly reported until manual weather labels are added.
