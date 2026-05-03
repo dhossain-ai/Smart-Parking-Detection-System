@@ -169,9 +169,19 @@ Deliverables:
 - demo_image.py
 - output image with green/red overlays
 - occupancy summary
+- reusable overlay drawing utilities
+- CNN and classical image prediction support
+- side-by-side original/processed image output
+- prediction CSV and summary JSON
 
 Status:
-Not started
+Completed
+
+Notes:
+- Default demo uses the tuned CNN V2 checkpoint and threshold from saved local metrics.
+- Classical demo is supported with the saved LBP + HSV + HOG LinearSVC model.
+- The image demo uses known COCO/test-manifest parking-slot bounding boxes; it is not a general car detector.
+- Generated demo images and prediction summaries are local ignored outputs.
 
 ---
 

@@ -67,9 +67,9 @@ docs/           # Project planning and AI context documents
 
 ## Current Status
 
-Phase 6 model comparison is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, create local training manifests, train/evaluate the classical model, train/tune the local CNN, and produce comparison tables/reports from saved metrics.
+Phase 7 image detection demo is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, create local training manifests, train/evaluate the classical model, train/tune the local CNN, produce comparison tables/reports from saved metrics, and create annotated image-demo outputs from known parking-slot boxes.
 
-Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. Phase 6 comparison is completed using the best available real CNN result. UI implementation has not started.
+Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. Phase 6 comparison is completed using the best available real CNN result. Phase 7 image demo is completed for both tuned CNN and classical model selection. Video and UI implementation have not started.
 
 Weather labels are unavailable in the current Roboflow COCO export, so weather robustness is prepared as a workflow/template rather than reported with fake sunny/rainy/cloudy accuracy values. Further CNN training and tuning can be done later.
 
@@ -299,3 +299,32 @@ results/figures/false_occupancy_comparison.png
 ```
 
 The Phase 6 report states that the classical model meets requirements and the current tuned CNN partially meets requirements. It also records that weather-wise robustness cannot be honestly reported until manual weather labels are added.
+
+## Phase 7 Image Demo Workflow
+
+Create an annotated image demo with the tuned CNN:
+
+```bash
+python -m src.visualization.demo_image
+python -m src.visualization.demo_image --model-type cnn
+```
+
+Create an annotated image demo with the classical model:
+
+```bash
+python -m src.visualization.demo_image --model-type classical
+```
+
+The image demo selects a test image with many parking-slot annotations unless `--image-path` is supplied. It uses known COCO/test-manifest bounding boxes, crops each slot, predicts vacant/occupied locally, and draws green vacant overlays and red occupied overlays on the original image. This is parking-slot image/frame detection, not general car detection.
+
+Default outputs:
+
+```text
+results/images/demo_image_cnn_output.jpg
+results/images/demo_image_cnn_side_by_side.jpg
+results/images/demo_image_classical_output.jpg
+results/images/demo_image_classical_side_by_side.jpg
+results/metrics/demo_image/
+```
+
+Generated demo images, prediction CSVs, and summary JSON files are local ignored outputs.
