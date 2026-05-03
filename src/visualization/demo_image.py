@@ -38,6 +38,66 @@ DEFAULT_OUTPUT_DIR = Path("results/metrics/demo_image")
 LABEL_BY_TARGET = {0: "vacant", 1: "occupied"}
 
 
+class CNNPredictor:
+    def __init__(self, model_path: Path, threshold: float) -> None:
+        self.model_path = model_path
+        self.threshold = threshold
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model, self.model_version = _load_cnn_model(model_path, self.device)
+        self.model_name = f"CNN {self.model_version}"
+
+    @torch.no_grad()
+    def predict(self, records: list[SlotRecord], image_rgb: np.ndarray) -> list[dict[str, Any]]:
+        crops = [_crop_record(image_rgb, record, image_size=64) for record in records]
+        batch = torch.stack([_tensor_from_crop(crop) for crop in crops], dim=0).to(self.device)
+        logits = self.model(batch)
+        probabilities = torch.softmax(logits, dim=1)[:, 1].detach().cpu().numpy()
+
+        predictions = []
+        for slot_index, (record, occupied_probability) in enumerate(zip(records, probabilities), start=1):
+            label = "occupied" if float(occupied_probability) >= self.threshold else "vacant"
+            predictions.append(
+                _prediction_row(
+                    slot_index=slot_index,
+                    record=record,
+                    predicted_label=label,
+                    occupied_probability=float(occupied_probability),
+                    score=None,
+                    threshold=self.threshold,
+                    model_type="cnn",
+                )
+            )
+        return predictions
+
+
+class ClassicalPredictor:
+    def __init__(self, model_path: Path) -> None:
+        self.model_path = model_path
+        self.model, self.feature_config, self.feature_set = _load_classical_model(model_path)
+        self.model_name = "Classical LBP+HSV+HOG"
+
+    def predict(self, records: list[SlotRecord], image_rgb: np.ndarray) -> list[dict[str, Any]]:
+        predictions = []
+        for slot_index, record in enumerate(records, start=1):
+            crop = _crop_record(image_rgb, record, image_size=self.feature_config.image_size)
+            vector = extract_combined_features(crop, config=self.feature_config, feature_set=self.feature_set)
+            features = vector.reshape(1, -1)
+            target = int(self.model.predict(features)[0])
+            label = LABEL_BY_TARGET.get(target, "occupied" if target == 1 else "vacant")
+            predictions.append(
+                _prediction_row(
+                    slot_index=slot_index,
+                    record=record,
+                    predicted_label=label,
+                    occupied_probability=_probability_for_occupied(self.model, features),
+                    score=_score_for_occupied(self.model, features),
+                    threshold=None,
+                    model_type="classical",
+                )
+            )
+        return predictions
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Create an annotated smart-parking image demo from known slot boxes."
@@ -76,6 +136,10 @@ def _read_threshold_from_metrics(default: float = 0.48) -> float:
             if value not in (None, ""):
                 return float(value)
     return default
+
+
+def read_cnn_threshold(default: float = 0.48) -> float:
+    return _read_threshold_from_metrics(default=default)
 
 
 def _default_output_image(model_type: str) -> Path:
@@ -123,12 +187,23 @@ def _select_records(
     raise FileNotFoundError("No manifest image paths could be resolved locally.")
 
 
+def prepare_image_records(
+    records: list[SlotRecord],
+    image_path: Path | None = None,
+) -> tuple[str, Path, list[SlotRecord]]:
+    return _select_records(records, image_path)
+
+
 def _load_image_pair(image_path: Path) -> tuple[np.ndarray, np.ndarray]:
     image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
     if image_bgr is None:
         raise FileNotFoundError(f"Could not read image: {image_path}")
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     return image_bgr, image_rgb
+
+
+def load_image_pair(image_path: Path) -> tuple[np.ndarray, np.ndarray]:
+    return _load_image_pair(image_path)
 
 
 def _zero_crop(image_size: int) -> np.ndarray:
@@ -198,6 +273,22 @@ def _load_cnn_model(model_path: Path, device: torch.device) -> tuple[torch.nn.Mo
     raise RuntimeError(f"Could not load CNN checkpoint: {last_error}")
 
 
+def load_cnn_predictor(model_path: Path, threshold: float) -> CNNPredictor:
+    return CNNPredictor(model_path=model_path, threshold=threshold)
+
+
+def load_classical_predictor(model_path: Path) -> ClassicalPredictor:
+    return ClassicalPredictor(model_path=model_path)
+
+
+def predict_slots_for_image(
+    records: list[SlotRecord],
+    image_rgb: np.ndarray,
+    predictor: CNNPredictor | ClassicalPredictor,
+) -> tuple[list[dict[str, Any]], str]:
+    return predictor.predict(records, image_rgb), predictor.model_name
+
+
 @torch.no_grad()
 def _predict_cnn(
     records: list[SlotRecord],
@@ -205,29 +296,7 @@ def _predict_cnn(
     model_path: Path,
     threshold: float,
 ) -> tuple[list[dict[str, Any]], str]:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, model_version = _load_cnn_model(model_path, device)
-
-    crops = [_crop_record(image_rgb, record, image_size=64) for record in records]
-    batch = torch.stack([_tensor_from_crop(crop) for crop in crops], dim=0).to(device)
-    logits = model(batch)
-    probabilities = torch.softmax(logits, dim=1)[:, 1].detach().cpu().numpy()
-
-    predictions = []
-    for slot_index, (record, occupied_probability) in enumerate(zip(records, probabilities), start=1):
-        label = "occupied" if float(occupied_probability) >= threshold else "vacant"
-        predictions.append(
-            _prediction_row(
-                slot_index=slot_index,
-                record=record,
-                predicted_label=label,
-                occupied_probability=float(occupied_probability),
-                score=None,
-                threshold=threshold,
-                model_type="cnn",
-            )
-        )
-    return predictions, f"CNN {model_version}"
+    return predict_slots_for_image(records, image_rgb, load_cnn_predictor(model_path, threshold))
 
 
 def _load_classical_model(model_path: Path) -> tuple[Any, FeatureConfig, str]:
@@ -278,26 +347,7 @@ def _predict_classical(
     image_rgb: np.ndarray,
     model_path: Path,
 ) -> tuple[list[dict[str, Any]], str]:
-    model, feature_config, feature_set = _load_classical_model(model_path)
-    predictions = []
-    for slot_index, record in enumerate(records, start=1):
-        crop = _crop_record(image_rgb, record, image_size=feature_config.image_size)
-        vector = extract_combined_features(crop, config=feature_config, feature_set=feature_set)
-        features = vector.reshape(1, -1)
-        target = int(model.predict(features)[0])
-        label = LABEL_BY_TARGET.get(target, "occupied" if target == 1 else "vacant")
-        predictions.append(
-            _prediction_row(
-                slot_index=slot_index,
-                record=record,
-                predicted_label=label,
-                occupied_probability=_probability_for_occupied(model, features),
-                score=_score_for_occupied(model, features),
-                threshold=None,
-                model_type="classical",
-            )
-        )
-    return predictions, "Classical LBP+HSV+HOG"
+    return predict_slots_for_image(records, image_rgb, load_classical_predictor(model_path))
 
 
 def _prediction_row(
