@@ -230,6 +230,46 @@ def draw_summary_panel(
     return output
 
 
+def draw_frame_status_panel(
+    image_bgr: np.ndarray,
+    frame_index: int,
+    total_frames: int,
+    summary: dict[str, Any],
+    model_name: str,
+    x: int = 18,
+    y: int = 18,
+) -> np.ndarray:
+    output = image_bgr.copy()
+    panel_width = 270
+    panel_height = 136
+    _draw_translucent_panel(output, x, y, panel_width, panel_height, alpha=0.76)
+
+    occupied = int(summary.get("occupied_count", 0))
+    vacant = int(summary.get("vacant_count", 0))
+    occupancy_rate = float(summary.get("occupancy_rate", 0.0))
+    lines = [
+        f"Frame: {frame_index:03d}/{total_frames:03d}",
+        f"Model: {model_name}",
+        f"Occupied: {occupied}",
+        f"Vacant: {vacant}",
+        f"Occupancy: {occupancy_rate * 100:.1f}%",
+    ]
+    cursor_y = y + 25
+    for index, text in enumerate(lines):
+        cv2.putText(
+            output,
+            text,
+            (x + 14, cursor_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55 if index == 0 else 0.48,
+            TEXT_COLOR if index != 1 else MUTED_TEXT_COLOR,
+            2 if index == 0 else 1,
+            lineType=cv2.LINE_AA,
+        )
+        cursor_y += 24
+    return output
+
+
 def _draw_translucent_panel(
     image_bgr: np.ndarray,
     x: int,
