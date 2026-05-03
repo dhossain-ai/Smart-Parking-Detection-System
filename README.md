@@ -67,9 +67,9 @@ docs/           # Project planning and AI context documents
 
 ## Current Status
 
-Phase 8 video-style detection demo is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, create local training manifests, train/evaluate the classical model, train/tune the local CNN, produce comparison tables/reports from saved metrics, create annotated image-demo outputs, and create annotated frame-sequence video demos from known parking-slot boxes.
+Phase 9 Streamlit local app UI is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, create local training manifests, train/evaluate the classical model, train/tune the local CNN, produce comparison tables/reports from saved metrics, create annotated image-demo outputs, create annotated frame-sequence video demos from known parking-slot boxes, and view the outputs in a local dashboard.
 
-Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. Phase 6 comparison is completed using the best available real CNN result. Phase 7 image demo and Phase 8 frame-sequence video demo are completed for both tuned CNN and classical model selection. Streamlit UI implementation has not started.
+Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. Phase 6 comparison is completed using the best available real CNN result. Phase 7 image demo, Phase 8 frame-sequence video demo, and Phase 9 Streamlit dashboard are completed for both tuned CNN and classical model selection.
 
 Weather labels are unavailable in the current Roboflow COCO export, so weather robustness is prepared as a workflow/template rather than reported with fake sunny/rainy/cloudy accuracy values. Further CNN training and tuning can be done later.
 
@@ -357,3 +357,27 @@ results/metrics/demo_video/
 ```
 
 Frame-level occupancy trends and prediction CSVs are saved under `results/metrics/demo_video/`. Arbitrary external videos require calibrated parking-slot coordinates for that camera view. Generated videos and video prediction outputs are local ignored artifacts.
+
+## Phase 9 Streamlit App Workflow
+
+Run the local dashboard:
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+The app includes:
+
+```text
+Dashboard
+Image Detection
+Video Detection
+Compare Models
+Metrics
+Weather Robustness
+Explainability
+Calibration
+Settings/About
+```
+
+The Image Detection and Video Detection pages can regenerate local demo outputs by calling the existing Python modules. No model training is triggered on startup, and no external APIs are used. The dashboard reports the current CNN status honestly as partially meeting the strict modern-model requirement.

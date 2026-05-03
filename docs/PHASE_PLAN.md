@@ -218,14 +218,24 @@ Build modern local dashboard app.
 
 Deliverables:
 - app/streamlit_app.py
+- dashboard overview
 - image detection tab
 - video detection tab
 - model comparison tab
 - metrics tab
 - weather robustness tab
+- explainability placeholder
+- calibration note
+- settings/about page
 
 Status:
-Not started
+Completed
+
+Notes:
+- Streamlit app runs locally with `streamlit run app/streamlit_app.py`.
+- App displays existing image/video demo outputs and can regenerate demos through local scripts.
+- App reports the CNN result as partially meeting the strict modern target.
+- No external APIs or cloud services are used.
 
 ---
 
