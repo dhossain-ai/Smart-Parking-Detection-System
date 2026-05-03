@@ -1,111 +1,39 @@
 # Smart Parking Detection System
 
-Smart Parking Detection System is a fully offline computer vision project for parking-slot occupancy classification using the PKLot dataset.
+Smart Parking Detection System is a fully offline computer vision project for parking-slot occupancy classification using the Roboflow COCO export of the PKLot dataset.
 
-The goal is to classify each annotated parking slot as:
+The system classifies each known parking slot as:
 
-- Vacant
-- Occupied
+- `vacant`
+- `occupied`
 
-This project uses known parking-slot coordinates from the local PKLot annotations or saved local calibration files. The current local dataset is a Roboflow COCO export detected by `_annotations.coco.json` files. It is not a general car detector.
+It uses known parking-slot coordinates from local COCO annotations or saved calibration files. It is not a general car detector. For a new real camera image or video, parking slots must be calibrated once or supplied as known bounding boxes.
 
-## Offline Constraint
+## Features
 
-All processing must run locally. The project must not use external internet inference APIs or hosted computer vision services such as Google Vision, Cloud OCR, AWS Rekognition, Azure Computer Vision, Roboflow hosted APIs, OpenAI Vision APIs, or similar services.
+- Fully local/offline workflow with no external vision APIs.
+- COCO annotation parsing for PKLot parking-slot boxes.
+- Classical ML method using LBP, HSV histogram, HOG, and Linear SVM.
+- Custom local CNN trained on 64x64 parking-slot crops.
+- Accuracy, precision, recall, F1-score, speed, and false occupancy reporting.
+- Image demo with green vacant overlays and red occupied overlays.
+- Annotated frame-sequence video demo from PKLot test images.
+- Local Streamlit dashboard for demos, metrics, model comparison, and limitations.
+- Honest weather robustness limitation when reliable weather labels are unavailable.
 
-## Required Methods
+## Offline / No API Rule
 
-The final system must implement and compare two local approaches:
+All processing runs locally. The project does not use Google Vision, Cloud OCR, AWS Rekognition, Azure Computer Vision, Roboflow hosted APIs, OpenAI Vision APIs, or any other online inference service.
 
-- Classical computer vision / machine learning: LBP, HSV histogram, optional HOG, with SVM or Random Forest.
-- Neural network: a local CNN trained on parking-slot crops.
+## Dataset Setup
 
-## Expected Metrics
-
-Professor target metrics:
-
-| Method | Accuracy | Precision | Recall | F1-score |
-|---|---:|---:|---:|---:|
-| Classical | > 88% | > 85% | > 85% | > 0.85 |
-| CNN | > 98% | > 97% | > 97% | > 0.97 |
-
-Additional evaluation should include inference speed, weather-wise robustness, confusion matrices, and false occupancy rate.
-
-Current local results from saved Phase 4, Phase 5, and Phase 6 outputs:
-
-| Method | Accuracy | Precision | Recall | F1-score | Requirement status |
-|---|---:|---:|---:|---:|---|
-| Classical LBP + HSV + HOG + LinearSVC | 0.94025 | 0.93871 | 0.94200 | 0.94035 | Met |
-| Tuned CNN V2 | 0.97300 | 0.95372 | 0.99425 | 0.97356 | Partially met |
-
-The classical method meets the assignment minimum requirements. The current tuned CNN exceeds recall and F1-score requirements but is still below the professor's strict accuracy and precision targets, so it must not be described as fully meeting the CNN requirement yet.
-
-## Repository Structure
-
-```text
-data/
-  raw/          # Local PKLot dataset files, ignored by Git
-  processed/    # Generated crops and processed data, ignored by Git
-  samples/      # Small safe samples for documentation or demos
-  splits/       # Train/validation/test split files
-
-src/
-  data/         # Dataset parsing and crop preparation
-  classical/    # Classical feature extraction and ML models
-  neural/       # Local CNN model and training code
-  evaluation/   # Metrics and model comparison
-  visualization/# Overlays, plots, and visual outputs
-  utils/        # Shared utilities and configuration
-
-app/            # Local Streamlit app
-models/         # Local trained model artifacts, ignored by Git
-results/        # Metrics and generated visual outputs
-notebooks/      # Exploratory notebooks
-slides/         # Presentation materials
-docs/           # Project planning and AI context documents
-```
-
-## Current Status
-
-Phase 9 Streamlit local app UI is implemented. The repository can point to a local Roboflow COCO PKLot dataset, parse parking-slot annotations, normalize occupancy labels, validate train/valid/test splits, create local training manifests, train/evaluate the classical model, train/tune the local CNN, produce comparison tables/reports from saved metrics, create annotated image-demo outputs, create annotated frame-sequence video demos from known parking-slot boxes, and view the outputs in a local dashboard.
-
-Classical model training and evaluation are implemented for Phase 4. Custom CNN training and Phase 5B tuning are implemented, with metrics accepted only from local runs. Phase 6 comparison is completed using the best available real CNN result. Phase 7 image demo, Phase 8 frame-sequence video demo, and Phase 9 Streamlit dashboard are completed for both tuned CNN and classical model selection.
-
-Weather labels are unavailable in the current Roboflow COCO export, so weather robustness is prepared as a workflow/template rather than reported with fake sunny/rainy/cloudy accuracy values. Further CNN training and tuning can be done later.
-
-## Local Setup
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python3 -m src.utils.check_setup
-```
-
-## Phase 1 Dataset Setup
-
-Download the PKLot Dataset manually from Kaggle and unzip it into:
+Download the PKLot dataset manually and place the Roboflow COCO export at:
 
 ```text
 data/raw/PKLot/
 ```
 
-Alternatively, set a custom dataset path:
-
-```bash
-export PKLOT_DATA_DIR=/absolute/path/to/PKLot
-```
-
-The full dataset is ignored by Git and should not be committed.
-
-Check the local setup and dataset location with:
-
-```bash
-python3 -m src.utils.check_setup
-python3 -m src.data.check_pklot_dataset
-```
-
-For the current Roboflow COCO version, the checker detects:
+Expected COCO files:
 
 ```text
 data/raw/PKLot/train/_annotations.coco.json
@@ -113,74 +41,63 @@ data/raw/PKLot/valid/_annotations.coco.json
 data/raw/PKLot/test/_annotations.coco.json
 ```
 
-If PKLot has not been downloaded or unzipped yet, the dataset checker will fail with setup instructions. That is expected before the local dataset is available.
+You may also set a custom dataset path:
 
-## Phase 2 COCO Metadata Workflow
+```bash
+export PKLOT_DATA_DIR=/absolute/path/to/PKLot
+```
 
-Generate project-ready parking-slot metadata:
+The dataset is ignored by Git and should not be committed.
+
+Check setup:
+
+```bash
+python -m src.utils.check_setup
+python -m src.data.check_pklot_dataset
+```
+
+## Installation
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python -m src.utils.check_setup
+```
+
+On macOS/Linux, activate with:
+
+```bash
+source .venv/bin/activate
+```
+
+## Preprocessing Commands
+
+Prepare COCO slot metadata:
 
 ```bash
 python -m src.data.prepare_pklot_coco
 ```
 
-This writes:
-
-```text
-data/processed/metadata/slot_annotations.csv
-data/processed/metadata/split_summary.csv
-data/processed/metadata/category_summary.csv
-```
-
-The metadata keeps image paths, COCO annotation IDs, normalized labels, and clipped bounding boxes. Category names such as `space-empty`, `empty`, `vacant`, `space-occupied`, and `occupied` are normalized to `vacant` or `occupied`.
-
-Export only a small crop sample set for visual verification:
-
-```bash
-python -m src.data.export_crop_samples --samples-per-class 20
-python -m src.data.make_crop_contact_sheet
-```
-
-Full crop export is available but intentionally optional:
-
-```bash
-python -m src.data.export_crop_samples --export-all
-```
-
-Later training should prefer metadata-driven on-the-fly cropping from source images. That avoids committing or storing hundreds of thousands of generated crop files.
-
-## Phase 3 Dataset Analysis Workflow
-
-Analyze the generated slot metadata:
+Analyze dataset metadata:
 
 ```bash
 python -m src.data.analyze_pklot_metadata
 ```
 
-Validate the existing Roboflow `train`, `valid`, and `test` splits:
+Validate splits:
 
 ```bash
 python -m src.data.validate_splits --check-images --max-image-checks 200
 ```
 
-Prepare weather labels honestly:
-
-```bash
-python -m src.data.prepare_weather_labels
-```
-
-The Roboflow COCO export may not preserve original PKLot weather folders. Weather is inferred only from reliable path metadata or a manually supplied weather CSV. If reliable weather labels are unavailable, the project records `unknown`; no sunny, rainy, cloudy, or overcast labels should be invented.
-
-Create local manifests for later training:
+Create training manifests:
 
 ```bash
 python -m src.data.create_training_manifests --samples-per-class 2000
 ```
 
-Full manifests are written to `data/splits/train_slots.csv`, `data/splits/valid_slots.csv`, and `data/splits/test_slots.csv`. Small balanced manifests are also created for quick experiments. These generated CSVs are ignored by Git, while training should crop slots on the fly from the original images and known bounding boxes.
-
-## Phase 4 Classical Baseline Workflow
-
-The classical baseline crops slots on the fly from the original images using manifest bounding boxes. It does not require exporting all crop images.
+## Classical Training
 
 Smoke test handcrafted feature extraction:
 
@@ -188,177 +105,99 @@ Smoke test handcrafted feature extraction:
 python -m src.classical.smoke_test_features
 ```
 
-Train and evaluate the default classical model:
+Train and evaluate the classical model:
 
 ```bash
 python -m src.classical.train_classical
 ```
 
-Default features are LBP texture histograms, HSV color histograms, and HOG descriptors from 64x64 slot crops. The default classifier is a Linear SVM with feature scaling.
-
-Generated local outputs:
+Expected local model artifact:
 
 ```text
 models/classical/classical_lbp_hsv_hog_svm.joblib
-results/metrics/classical/
-results/figures/classical_confusion_matrix.png
 ```
 
-Model files and generated metrics are ignored by Git. Reported accuracy, precision, recall, and F1-score must come from local script output; do not fake or hand-edit metrics.
+## CNN Training
 
-## Phase 5 CNN Baseline Workflow
-
-The neural baseline is a custom local CNN trained from scratch. It does not download pretrained weights and does not use online inference services.
-
-Smoke test the dataset and model path:
+Smoke test the CNN pipeline:
 
 ```bash
 python -m src.neural.smoke_test_cnn
 ```
 
-Train and evaluate the default CNN:
-
-```bash
-python -m src.neural.train_cnn
-```
-
-The CNN reads the same manifest CSVs as the classical baseline, crops parking slots on the fly from original images, resizes crops to 64x64, applies local training augmentations, and predicts:
-
-```text
-0 = vacant
-1 = occupied
-```
-
-Generated local outputs:
-
-```text
-models/cnn/best_cnn_model.pth
-results/metrics/cnn/
-results/figures/cnn_confusion_matrix.png
-results/figures/cnn_training_curves.png
-```
-
-CNN checkpoints and generated metrics are ignored by Git. Neural metrics should only be reported from real local training/evaluation runs.
-
-## Phase 5B CNN Tuning Workflow
-
-The tuned CNN workflow adds a `v2` architecture option and a threshold sweep to reduce false occupancy predictions while keeping occupied-slot recall high.
-
-Run the V2 smoke test:
-
-```bash
-python -m src.neural.smoke_test_cnn
-```
-
-Run a tuned CPU-safe experiment:
+Train the tuned V2 CNN:
 
 ```bash
 python -m src.neural.train_cnn --model-version v2 --epochs 8 --batch-size 64 --samples-per-class 2000 --patience 3 --weight-decay 0.0001 --output-model models/cnn/best_cnn_model_v2.pth --output-dir results/metrics/cnn_tuned
 ```
 
-Tuned outputs are saved separately:
+Expected local model artifact:
 
 ```text
 models/cnn/best_cnn_model_v2.pth
-results/metrics/cnn_tuned/
-results/figures/cnn_tuned_confusion_matrix.png
-results/figures/cnn_tuned_training_curves.png
-results/figures/cnn_tuned_threshold_sweep.png
 ```
 
-The threshold sweep is selected from validation metrics and saved locally. Do not claim the neural requirement is met unless the generated tuned metrics prove it.
+Model files are generated locally and ignored by Git. See `models/MODEL_ARTIFACTS.md`.
 
-## Phase 6 Evaluation Comparison Workflow
+## Evaluation
 
-Generate comparison tables, markdown reports, and slide/app figures from saved metrics:
+Generate comparison tables, reports, and slide-ready summaries:
 
 ```bash
 python -m src.evaluation.compare_models
 ```
 
-Default inputs:
-
-```text
-results/metrics/classical/classical_metrics.json
-results/metrics/cnn_tuned/cnn_metrics.json
-```
-
-If tuned CNN metrics are unavailable, the comparison script falls back to:
-
-```text
-results/metrics/cnn/cnn_metrics.json
-```
-
-Generated comparison outputs:
-
-```text
-results/metrics/comparison/
-results/figures/model_metrics_comparison.png
-results/figures/requirement_checklist.png
-results/figures/false_occupancy_comparison.png
-```
-
-The Phase 6 report states that the classical model meets requirements and the current tuned CNN partially meets requirements. It also records that weather-wise robustness cannot be honestly reported until manual weather labels are added.
-
-## Phase 7 Image Demo Workflow
-
-Create an annotated image demo with the tuned CNN:
+Final validation check:
 
 ```bash
-python -m src.visualization.demo_image
+python -m src.utils.final_project_check
+```
+
+## Image Demo
+
+Run the tuned CNN image demo:
+
+```bash
 python -m src.visualization.demo_image --model-type cnn
 ```
 
-Create an annotated image demo with the classical model:
+Run the classical image demo:
 
 ```bash
 python -m src.visualization.demo_image --model-type classical
 ```
 
-The image demo selects a test image with many parking-slot annotations unless `--image-path` is supplied. It uses known COCO/test-manifest bounding boxes, crops each slot, predicts vacant/occupied locally, and draws green vacant overlays and red occupied overlays on the original image. This is parking-slot image/frame detection, not general car detection.
-
-Default outputs:
+Default CNN output:
 
 ```text
-results/images/demo_image_cnn_output.jpg
 results/images/demo_image_cnn_side_by_side.jpg
-results/images/demo_image_classical_output.jpg
-results/images/demo_image_classical_side_by_side.jpg
-results/metrics/demo_image/
 ```
 
-Generated demo images, prediction CSVs, and summary JSON files are local ignored outputs.
+Green means vacant. Red means occupied. The demo uses known COCO parking-slot boxes from the test manifest.
 
-## Phase 8 Video Demo Workflow
+## Video Demo
 
-Create an annotated frame-sequence video demo with the tuned CNN:
+Run the tuned CNN frame-sequence video demo:
 
 ```bash
-python -m src.visualization.demo_video
-python -m src.visualization.demo_video --model-type cnn --num-frames 60
+python -m src.visualization.demo_video --model-type cnn --num-frames 30 --fps 5
 ```
 
-Create an annotated frame-sequence video demo with the classical model:
+For a shorter smoke test:
 
 ```bash
-python -m src.visualization.demo_video --model-type classical --num-frames 30
+python -m src.visualization.demo_video --model-type cnn --num-frames 5 --fps 5
 ```
 
-The current Roboflow COCO export contains annotated image frames, not real continuous video files. The video demo therefore selects multiple annotated PKLot test images, predicts parking-slot occupancy for each frame, draws green vacant overlays and red occupied overlays, and writes an MP4 video plus a side-by-side original/processed MP4.
-
-Default outputs:
+Default CNN output:
 
 ```text
-results/videos/demo_video_cnn_output.mp4
 results/videos/demo_video_cnn_side_by_side.mp4
-results/videos/demo_video_classical_output.mp4
-results/videos/demo_video_classical_side_by_side.mp4
-results/metrics/demo_video/
 ```
 
-Frame-level occupancy trends and prediction CSVs are saved under `results/metrics/demo_video/`. Arbitrary external videos require calibrated parking-slot coordinates for that camera view. Generated videos and video prediction outputs are local ignored artifacts.
+The current COCO export contains annotated image frames, not continuous source videos, so the video demo is generated honestly from annotated PKLot frame sequences.
 
-## Phase 9 Streamlit App Workflow
+## Streamlit App
 
 Run the local dashboard:
 
@@ -368,16 +207,74 @@ streamlit run app/streamlit_app.py
 
 The app includes:
 
+- Dashboard
+- Image Detection
+- Video Detection
+- Compare Models
+- Metrics
+- Weather Robustness
+- Explainability
+- Calibration
+- Settings/About
+
+The app runs locally/offline and does not train models on startup.
+
+## Results
+
+| Method | Accuracy | Precision | Recall | F1-score | Requirement status |
+|---|---:|---:|---:|---:|---|
+| Classical LBP + HSV + HOG + LinearSVC | 0.94025 | 0.93871 | 0.94200 | 0.94035 | Met |
+| Tuned CNN V2 | 0.97300 | 0.95372 | 0.99425 | 0.97356 | Partially met |
+
+The classical method meets the assignment's classical minimum requirements.
+
+The tuned CNN exceeds recall and F1-score targets but does not yet meet the strict modern accuracy and precision targets. Do not describe the CNN as fully meeting the modern/CNN requirement unless future real local training improves those metrics.
+
+## Known Limitations
+
+- The system uses known parking-slot boxes; arbitrary new camera views require one-time slot calibration.
+- Weather labels are unavailable in the current Roboflow COCO export, so weather-wise accuracy is not reported.
+- CNN V2 is strong but only partially meets the strict modern target.
+- Dataset files, model checkpoints, generated images, generated videos, and large generated results are ignored by Git.
+- Existing demo outputs may need to be regenerated after cloning because generated artifacts are local.
+
+## Final Project Structure
+
 ```text
-Dashboard
-Image Detection
-Video Detection
-Compare Models
-Metrics
-Weather Robustness
-Explainability
-Calibration
-Settings/About
+app/
+  streamlit_app.py
+data/
+  raw/                # local dataset, ignored by Git
+  processed/          # generated metadata/crops, ignored by Git
+  splits/             # generated manifests, ignored by Git
+docs/
+  FINAL_REPORT.md
+  DEMO_SCRIPT.md
+  FINAL_SUBMISSION_CHECKLIST.md
+  STREAMLIT_APP_GUIDE.md
+models/
+  MODEL_ARTIFACTS.md
+  classical/          # local .joblib model artifacts, ignored by Git
+  cnn/                # local .pth model artifacts, ignored by Git
+results/
+  metrics/            # saved metrics and generated demo summaries
+  images/             # generated demo images, ignored by Git
+  videos/             # generated demo videos, ignored by Git
+slides/
+  presentation_outline.md
+src/
+  classical/          # handcrafted features and classical training
+  data/               # COCO parsing, manifests, dataset checks
+  evaluation/         # comparison reports
+  neural/             # CNN model/training/evaluation
+  utils/              # setup and final validation checks
+  visualization/      # image/video overlay demos
 ```
 
-The Image Detection and Video Detection pages can regenerate local demo outputs by calling the existing Python modules. No model training is triggered on startup, and no external APIs are used. The dashboard reports the current CNN status honestly as partially meeting the strict modern-model requirement.
+## Final Documentation
+
+- Final report: `docs/FINAL_REPORT.md`
+- Demo script: `docs/DEMO_SCRIPT.md`
+- Slide outline: `slides/presentation_outline.md`
+- Submission checklist: `docs/FINAL_SUBMISSION_CHECKLIST.md`
+- Model artifact note: `models/MODEL_ARTIFACTS.md`

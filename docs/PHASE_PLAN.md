@@ -246,10 +246,19 @@ Prepare final submission.
 
 Deliverables:
 - final README
-- slides
-- demo screenshots
-- demo video
+- docs/FINAL_REPORT.md
+- docs/DEMO_SCRIPT.md
+- docs/FINAL_SUBMISSION_CHECKLIST.md
+- slides/presentation_outline.md
+- models/MODEL_ARTIFACTS.md
+- src/utils/final_project_check.py
+- final README
 - instructions for running locally
 
 Status:
-Not started
+Completed
+
+Notes:
+- Final documentation, demo script, slide outline, submission checklist, model artifact note, and validation script are prepared.
+- Final README states the offline/no external API constraint and reports the CNN as partially meeting the strict modern target.
+- Generated datasets, models, images, and videos remain local ignored artifacts.
