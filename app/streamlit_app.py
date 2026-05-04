@@ -276,38 +276,109 @@ def dashboard_page() -> None:
 def image_detection_page() -> None:
     st.header("Image Detection")
     st.info("This demo uses known parking-slot coordinates from COCO annotations.")
+    st.markdown(
+        """
+        <div class="note-box">
+        Selected images come from the PKLot test split and use COCO parking-slot coordinates.
+        This tests the model on unseen test images. For a custom image, parking-slot calibration
+        or annotation coordinates are required.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    cols = st.columns(2)
-    with cols[0]:
-        if st.button("Regenerate CNN image demo", type="primary"):
-            with st.spinner("Running local CNN image demo..."):
-                result = run_command([sys.executable, "-m", "src.visualization.demo_image", "--model-type", "cnn"])
-            show_command_result(result)
-    with cols[1]:
-        if st.button("Regenerate classical image demo"):
-            with st.spinner("Running local classical image demo..."):
-                result = run_command([sys.executable, "-m", "src.visualization.demo_image", "--model-type", "classical"])
-            show_command_result(result)
+    test_slots = load_csv("data/splits/test_slots.csv")
+    image_options: list[str] = []
+    slot_counts: dict[str, int] = {}
+    if test_slots is not None and {"image_path", "file_name"}.issubset(test_slots.columns):
+        grouped = (
+            test_slots.groupby("image_path", as_index=False)
+            .agg(file_name=("file_name", "first"), slot_count=("image_path", "size"))
+            .sort_values(["slot_count", "image_path"], ascending=[False, True])
+        )
+        image_options = grouped["image_path"].astype(str).tolist()
+        slot_counts = dict(zip(grouped["image_path"].astype(str), grouped["slot_count"].astype(int)))
+    else:
+        st.warning("Test split manifest is missing or does not contain image paths.")
 
-    tab_cnn, tab_classical, tab_summary = st.tabs(["CNN Output", "Classical Output", "Summary"])
-    with tab_cnn:
-        show_image_if_exists(PATHS["image_cnn"], "CNN processed image")
-        show_image_if_exists(PATHS["image_cnn_side"], "CNN original vs processed")
-    with tab_classical:
-        show_image_if_exists(PATHS["image_classical_side"], "Classical original vs processed")
+    st.subheader("Input Source")
+    input_source = st.radio(
+        "Image input",
+        ["Default demo image", "Select test image"],
+        horizontal=True,
+    )
+
+    selected_image_path: str | None = None
+    if input_source == "Select test image":
+        if image_options:
+            selected_image_path = st.selectbox(
+                "PKLot test image",
+                image_options,
+                format_func=lambda value: Path(value).name,
+            )
+            st.caption(
+                f"Full path: `{selected_image_path}` | Annotated slots: {slot_counts.get(selected_image_path, 'NA')}"
+            )
+        else:
+            st.error("No annotated PKLot test images are available.")
+    else:
+        st.caption("The default demo image is selected automatically by the local image demo script.")
+
+    model_label = st.radio("Model", ["CNN", "Classical"], horizontal=True)
+    model_type = model_label.lower()
+
+    st.text_input(
+        "Custom image upload",
+        value="Planned: requires parking-slot calibration before detection can run.",
+        disabled=True,
+    )
+    st.caption(
+        "Custom image upload is planned. A custom image requires parking-slot calibration because "
+        "the model must know where the parking spaces are."
+    )
+
+    run_disabled = input_source == "Select test image" and selected_image_path is None
+    if st.button("Run Detection", type="primary", disabled=run_disabled):
+        command = [sys.executable, "-m", "src.visualization.demo_image", "--model-type", model_type]
+        if selected_image_path:
+            command.extend(["--image-path", selected_image_path])
+
+        with st.spinner(f"Running local {model_label} image detection..."):
+            result = run_command(command)
+        show_command_result(result)
+
+        if result.returncode == 0:
+            st.session_state["image_demo_last_model"] = model_type
+            st.session_state["image_demo_last_source"] = input_source
+            st.session_state["image_demo_last_image"] = selected_image_path or "Default demo image"
+
+    latest_model = st.session_state.get("image_demo_last_model", model_type)
+    latest_source = st.session_state.get("image_demo_last_source", input_source)
+    latest_image = st.session_state.get("image_demo_last_image", selected_image_path or "Default demo image")
+
+    summary_path = PATHS["image_cnn_summary"] if latest_model == "cnn" else PATHS["image_classical_summary"]
+    side_by_side_path = PATHS["image_cnn_side"] if latest_model == "cnn" else PATHS["image_classical_side"]
+    processed_path = PATHS["image_cnn"] if latest_model == "cnn" else "results/images/demo_image_classical_output.jpg"
+    summary = load_json(summary_path) or load_json(PATHS["image_summary"])
+
+    st.subheader("Latest Output")
+    st.caption(f"Source: {latest_source} | Image: `{latest_image}` | Model: {latest_model.upper()}")
+    if summary:
+        cols = st.columns(4)
+        cols[0].metric("Total slots", summary.get("total_slots", "NA"))
+        cols[1].metric("Occupied", summary.get("occupied_count", "NA"))
+        cols[2].metric("Vacant", summary.get("vacant_count", "NA"))
+        occupancy_rate = summary.get("occupancy_rate")
+        occupancy_text = f"{float(occupancy_rate) * 100:.1f}%" if isinstance(occupancy_rate, (int, float)) else "NA"
+        cols[3].metric("Occupancy rate", occupancy_text)
+
+    tab_output, tab_side_by_side, tab_summary = st.tabs(["Processed Image", "Side-by-Side", "Summary JSON"])
+    with tab_output:
+        show_image_if_exists(processed_path, f"{latest_model.upper()} processed image")
+    with tab_side_by_side:
+        show_image_if_exists(side_by_side_path, f"{latest_model.upper()} original vs processed")
     with tab_summary:
-        summary = load_json(PATHS["image_summary"])
-        if summary:
-            st.json(summary)
-        cnn_summary = load_json(PATHS["image_cnn_summary"])
-        classical_summary = load_json(PATHS["image_classical_summary"])
-        cols = st.columns(2)
-        with cols[0]:
-            st.subheader("CNN latest saved summary")
-            st.json(cnn_summary or {"status": "missing"})
-        with cols[1]:
-            st.subheader("Classical latest saved summary")
-            st.json(classical_summary or {"status": "missing"})
+        st.json(summary or {"status": "missing"})
 
 
 def video_detection_page() -> None:

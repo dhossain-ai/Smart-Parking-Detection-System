@@ -157,22 +157,57 @@ def _relative_or_absolute(path: Path) -> str:
         return str(path)
 
 
+def _path_text(path: Path | str) -> str:
+    return str(path).replace("\\", "/").lstrip("./")
+
+
+def _manifest_path_variants(path: Path | str) -> set[str]:
+    text = _path_text(path)
+    variants = {text}
+
+    for marker in ["data/raw/PKLot/", "raw/PKLot/", "PKLot/"]:
+        if marker in text:
+            variants.add(text.split(marker, 1)[1])
+
+    return {variant for variant in variants if variant}
+
+
+def _safe_resolved_image_path(path: Path | str) -> Path | None:
+    try:
+        return resolve_image_path(path)
+    except (OSError, ValueError):
+        return None
+
+
+def _paths_equal(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return left == right
+
+
+def _record_matches_image_path(record: SlotRecord, requested_path: Path) -> bool:
+    if _manifest_path_variants(requested_path) & _manifest_path_variants(record.image_path):
+        return True
+
+    requested_resolved = _safe_resolved_image_path(requested_path)
+    record_resolved = _safe_resolved_image_path(record.image_path)
+    if requested_resolved is not None and record_resolved is not None:
+        if _paths_equal(requested_resolved, record_resolved):
+            return True
+
+    if len(requested_path.parts) == 1 and record.file_name == requested_path.name:
+        return True
+
+    return False
+
+
 def _select_records(
     records: list[SlotRecord],
     image_path: Path | None,
 ) -> tuple[str, Path, list[SlotRecord]]:
     if image_path is not None:
-        requested_path = resolve_image_path(image_path)
-        requested_name = image_path.name
-        matches = []
-        for record in records:
-            record_path = resolve_image_path(record.image_path)
-            if (
-                record_path == requested_path
-                or Path(record.image_path).as_posix() == image_path.as_posix()
-                or record.file_name == requested_name
-            ):
-                matches.append(record)
+        matches = [record for record in records if _record_matches_image_path(record, image_path)]
         if not matches:
             raise ValueError(f"No slot annotations found for image: {image_path}")
         return matches[0].image_path, resolve_image_path(matches[0].image_path), matches
