@@ -75,11 +75,85 @@ class ParkingSlotCNNV2(nn.Module):
 
 def build_model(
     num_classes: int = 2,
-    model_version: str = "v1",
-    dropout: float = 0.35,
+    model_version: str = "v2",
+    pretrained: bool = False,
+    freeze_backbone: bool = False,
+    dropout: float = 0.3,
 ) -> nn.Module:
     if model_version == "v1":
         return ParkingSlotCNN(num_classes=num_classes, dropout=dropout)
     if model_version == "v2":
         return ParkingSlotCNNV2(num_classes=num_classes, dropout=dropout)
+    if model_version == "mobilenet_v3_small":
+        return _build_mobilenet_v3_small(
+            num_classes=num_classes,
+            pretrained=pretrained,
+            freeze_backbone=freeze_backbone,
+            dropout=dropout,
+        )
     raise ValueError(f"Unsupported CNN model version: {model_version}")
+
+
+def _build_mobilenet_v3_small(
+    num_classes: int,
+    pretrained: bool,
+    freeze_backbone: bool,
+    dropout: float,
+) -> nn.Module:
+    try:
+        from torchvision import models
+    except ModuleNotFoundError as error:
+        raise ModuleNotFoundError(
+            "MobileNetV3-Small requires torchvision. Install the project requirements "
+            "before using --model-version mobilenet_v3_small."
+        ) from error
+
+    model = _load_torchvision_mobilenet_v3_small(models, pretrained=pretrained)
+    _replace_mobilenet_classifier(model, num_classes=num_classes, dropout=dropout)
+
+    if freeze_backbone:
+        for parameter in model.parameters():
+            parameter.requires_grad = False
+        for parameter in model.classifier.parameters():
+            parameter.requires_grad = True
+
+    return model
+
+
+def _load_torchvision_mobilenet_v3_small(models: object, pretrained: bool) -> nn.Module:
+    weights = None
+    if pretrained:
+        try:
+            weights_enum = getattr(models, "MobileNet_V3_Small_Weights")
+            weights = weights_enum.DEFAULT
+        except AttributeError:
+            return models.mobilenet_v3_small(pretrained=True)
+
+    try:
+        return models.mobilenet_v3_small(weights=weights)
+    except TypeError:
+        return models.mobilenet_v3_small(pretrained=pretrained)
+
+
+def _replace_mobilenet_classifier(model: nn.Module, num_classes: int, dropout: float) -> None:
+    classifier = getattr(model, "classifier", None)
+    if not isinstance(classifier, nn.Sequential):
+        raise ValueError("Unsupported MobileNetV3 classifier layout.")
+
+    for layer in classifier:
+        if isinstance(layer, nn.Dropout):
+            layer.p = dropout
+
+    last_linear_index = None
+    for index in range(len(classifier) - 1, -1, -1):
+        if isinstance(classifier[index], nn.Linear):
+            last_linear_index = index
+            break
+
+    if last_linear_index is None:
+        raise ValueError("MobileNetV3 classifier does not contain a Linear output layer.")
+
+    previous_layer = classifier[last_linear_index]
+    if not isinstance(previous_layer, nn.Linear):
+        raise ValueError("MobileNetV3 output layer is not Linear.")
+    classifier[last_linear_index] = nn.Linear(previous_layer.in_features, num_classes)
