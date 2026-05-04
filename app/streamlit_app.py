@@ -92,10 +92,30 @@ def run_command(command: list[str], timeout: int = 900) -> subprocess.CompletedP
     )
 
 
+def command_text(command: list[str]) -> str:
+    return subprocess.list2cmdline(command)
+
+
+def timeout_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
 def show_image_if_exists(relative_path: str | Path, caption: str, use_container_width: bool = True) -> None:
     path = project_path(relative_path)
     if path.is_file():
         st.image(str(path), caption=caption, use_container_width=use_container_width)
+    else:
+        st.warning(f"Missing image: `{relative_path}`")
+
+
+def show_image_bytes_if_exists(relative_path: str | Path, caption: str) -> None:
+    path = project_path(relative_path)
+    if path.is_file():
+        st.image(path.read_bytes(), caption=caption, use_container_width=True)
     else:
         st.warning(f"Missing image: `{relative_path}`")
 
@@ -325,6 +345,7 @@ def image_detection_page() -> None:
                 image_options,
                 format_func=lambda value: Path(value).name,
             )
+            st.session_state["image_demo_selected_image"] = selected_image_path
             st.caption(
                 f"Full path: `{selected_image_path}` | Annotated slots: {slot_counts.get(selected_image_path, 'NA')}"
             )
@@ -355,19 +376,53 @@ def image_detection_page() -> None:
         if input_source == "Random test image":
             run_image_path = str(pd.Series(random_options).sample(n=1).iloc[0])
             st.session_state["image_demo_random_image"] = run_image_path
+        elif input_source == "Select test image":
+            st.session_state["image_demo_selected_image"] = run_image_path
 
         command = [sys.executable, "-m", "src.visualization.demo_image", "--model-type", model_type]
         if run_image_path:
             command.extend(["--image-path", run_image_path])
 
-        with st.spinner(f"Running local {model_label} image detection..."):
-            result = run_command(command)
-        show_command_result(result)
+        st.session_state["image_demo_last_command"] = command_text(command)
+        st.markdown("**Command**")
+        st.code(st.session_state["image_demo_last_command"], language="bash")
 
-        if result.returncode == 0:
-            st.session_state["image_demo_last_model"] = model_type
-            st.session_state["image_demo_last_source"] = input_source
-            st.session_state["image_demo_last_image"] = run_image_path or "Default demo image"
+        try:
+            with st.spinner(f"Running local {model_label} image detection..."):
+                result = run_command(command, timeout=120)
+        except subprocess.TimeoutExpired as error:
+            st.error("Image detection command timed out after 120 seconds.")
+            with st.expander("Command output", expanded=True):
+                stdout = timeout_output(error.stdout)
+                stderr = timeout_output(error.stderr)
+                if stdout:
+                    st.code(stdout, language="text")
+                if stderr:
+                    st.code(stderr, language="text")
+            result = None
+
+        if result is not None:
+            show_command_result(result)
+            if result.returncode == 0:
+                summary = load_json(PATHS["image_summary"]) or {}
+                st.session_state["image_demo_last_model"] = model_type
+                st.session_state["image_demo_last_source"] = input_source
+                st.session_state["image_demo_last_image"] = summary.get(
+                    "image_path",
+                    run_image_path or "Default demo image",
+                )
+                st.session_state["image_demo_last_summary"] = summary
+                st.session_state["image_demo_last_side_by_side"] = summary.get(
+                    "output_side_by_side",
+                    PATHS["image_cnn_side"] if model_type == "cnn" else PATHS["image_classical_side"],
+                )
+                st.session_state["image_demo_last_processed"] = summary.get(
+                    "output_image",
+                    PATHS["image_cnn"] if model_type == "cnn" else "results/images/demo_image_classical_output.jpg",
+                )
+                st.success("Image detection output refreshed from disk.")
+            else:
+                st.error(f"Image detection failed with return code {result.returncode}.")
 
     current_image_label = selected_image_path or "Default demo image"
     if input_source == "Random test image":
@@ -379,10 +434,18 @@ def image_detection_page() -> None:
     summary_path = PATHS["image_cnn_summary"] if latest_model == "cnn" else PATHS["image_classical_summary"]
     side_by_side_path = PATHS["image_cnn_side"] if latest_model == "cnn" else PATHS["image_classical_side"]
     processed_path = PATHS["image_cnn"] if latest_model == "cnn" else "results/images/demo_image_classical_output.jpg"
-    summary = load_json(summary_path) or load_json(PATHS["image_summary"])
+    summary = st.session_state.get("image_demo_last_summary")
+    if not summary:
+        summary = load_json(summary_path) or load_json(PATHS["image_summary"])
+    side_by_side_path = st.session_state.get("image_demo_last_side_by_side", side_by_side_path)
+    processed_path = st.session_state.get("image_demo_last_processed", processed_path)
 
     st.subheader("Latest Output")
     st.caption(f"Source: {latest_source} | Image: `{latest_image}` | Model: {latest_model.upper()}")
+    last_command = st.session_state.get("image_demo_last_command")
+    if last_command:
+        with st.expander("Last command"):
+            st.code(last_command, language="bash")
     if summary:
         cols = st.columns(4)
         cols[0].metric("Total slots", summary.get("total_slots", "NA"))
@@ -394,9 +457,9 @@ def image_detection_page() -> None:
 
     tab_output, tab_side_by_side, tab_summary = st.tabs(["Processed Image", "Side-by-Side", "Summary JSON"])
     with tab_output:
-        show_image_if_exists(processed_path, f"{latest_model.upper()} processed image")
+        show_image_bytes_if_exists(processed_path, f"{latest_model.upper()} processed image")
     with tab_side_by_side:
-        show_image_if_exists(side_by_side_path, f"{latest_model.upper()} original vs processed")
+        show_image_bytes_if_exists(side_by_side_path, f"{latest_model.upper()} original vs processed")
     with tab_summary:
         st.json(summary or {"status": "missing"})
 
