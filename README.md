@@ -14,7 +14,8 @@ It uses known parking-slot coordinates from local COCO annotations or saved cali
 - Fully local/offline workflow with no external vision APIs.
 - COCO annotation parsing for PKLot parking-slot boxes.
 - Classical ML method using LBP, HSV histogram, HOG, and Linear SVM.
-- Custom local CNN trained on 64x64 parking-slot crops.
+- Custom local CNN V2 trained on 64x64 parking-slot crops.
+- MobileNetV3-Small transfer learning support with 224x224 parking-slot crops.
 - Accuracy, precision, recall, F1-score, speed, and false occupancy reporting.
 - Image demo with green vacant overlays and red occupied overlays.
 - Annotated frame-sequence video demo from PKLot test images.
@@ -135,6 +136,35 @@ Expected local model artifact:
 
 ```text
 models/cnn/best_cnn_model_v2.pth
+```
+
+### MobileNetV3 Transfer Learning
+
+MobileNetV3-Small is available as a professor-aligned modern neural method. It uses 224x224 parking-slot crops and replaces the torchvision classifier head with the same two output logits:
+
+```text
+0 = vacant
+1 = occupied
+```
+
+Pretrained ImageNet weights are used only during training when `--pretrained` is explicitly passed. The saved checkpoint contains local weights and metadata, so later evaluation or app/demo integration can run offline from the saved `.pth` file.
+
+Smoke test MobileNetV3 without downloading weights:
+
+```bash
+python -m src.neural.smoke_test_cnn --model-version mobilenet_v3_small --image-size 224
+```
+
+Local transfer-learning run:
+
+```bash
+python -m src.neural.train_cnn --model-version mobilenet_v3_small --pretrained --image-size 224 --epochs 5 --batch-size 64 --samples-per-class 2000 --patience 3 --output-model models/cnn/best_mobilenetv3_transfer.pth --output-dir results/metrics/mobilenetv3_transfer
+```
+
+Colab full training command:
+
+```bash
+python -m src.neural.train_cnn --model-version mobilenet_v3_small --pretrained --image-size 224 --epochs 20 --batch-size 64 --samples-per-class 12000 --patience 6 --weight-decay 0.0001 --output-model models/cnn/best_mobilenetv3_transfer.pth --output-dir results/metrics/mobilenetv3_transfer
 ```
 
 Model files are generated locally and ignored by Git. See `models/MODEL_ARTIFACTS.md`.

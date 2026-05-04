@@ -229,9 +229,12 @@ results/metrics/classical/
 results/figures/classical_*.png
 results/metrics/cnn/
 results/metrics/cnn_tuned/
+results/metrics/mobilenetv3_transfer/
+results/metrics/mobilenetv3_transfer*/
 results/metrics/demo_image/
 !results/metrics/demo_image/.gitkeep
 results/metrics/demo_video/
 !results/metrics/demo_video/.gitkeep
 results/figures/cnn_*.png
 results/figures/cnn_tuned_*.png
+results/figures/mobilenetv3_*.png

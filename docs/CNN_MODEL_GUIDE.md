@@ -1,8 +1,8 @@
 # CNN Model Guide
 
-Phase 5 trains a fully offline custom CNN for parking-slot occupancy classification. Phase 5B adds tuning tools for improving precision while keeping occupied-slot recall high.
+Phase 5 trains a fully offline custom CNN for parking-slot occupancy classification. Phase 5B adds tuning tools for improving precision while keeping occupied-slot recall high. Phase B also adds MobileNetV3-Small transfer learning as a professor-aligned modern neural method.
 
-The model uses generated manifest CSVs and known COCO bounding boxes. Slot crops are loaded from the original images on the fly, resized to 64x64, normalized, and passed to a compact local CNN. No pretrained weights, online inference APIs, or internet downloads are used.
+The models use generated manifest CSVs and known COCO bounding boxes. Slot crops are loaded from the original images on the fly, resized, normalized, and passed to a local neural network. The custom CNN uses 64x64 crops. MobileNetV3-Small uses 224x224 crops. No online inference APIs are used.
 
 ## Architecture
 
@@ -21,6 +21,14 @@ Tuned model option:
 - AdaptiveAvgPool before the classifier
 - configurable dropout
 - same 64x64 input and 2-logit output
+
+Transfer-learning option:
+
+- `mobilenet_v3_small` uses `torchvision.models.mobilenet_v3_small`
+- 224x224 parking-slot crops
+- optional ImageNet pretrained weights only when `--pretrained` is explicitly passed
+- optional frozen backbone with `--freeze-backbone`
+- classifier head replaced with a 2-logit parking occupancy head
 
 The classifier outputs two logits:
 
@@ -59,6 +67,18 @@ python -m src.neural.smoke_test_cnn
 ```
 
 The smoke test loads a small balanced manifest sample, creates a dataloader, runs one forward pass, and checks tensor/logit shapes plus NaN/inf values.
+
+MobileNetV3 shape smoke test:
+
+```bash
+python -m src.neural.smoke_test_cnn --model-version mobilenet_v3_small --image-size 224
+```
+
+Pretrained MobileNetV3 smoke test, when torchvision weights are already cached or internet is available:
+
+```bash
+python -m src.neural.smoke_test_cnn --model-version mobilenet_v3_small --image-size 224 --pretrained
+```
 
 ## Train Baseline
 
@@ -110,6 +130,54 @@ results/figures/cnn_tuned_threshold_sweep.png
 ```
 
 Threshold selection is based on validation results. It first looks for thresholds that meet all neural targets, then falls back to the best F1 threshold with recall at least 0.97. Tuned results should be used only if the saved metrics genuinely improve the baseline.
+
+## MobileNetV3 Transfer Learning
+
+MobileNetV3-Small is available as a transfer-learning neural method aligned with the professor's suggestion of MobileNetV3 or AlexNet. It keeps the same parking-slot classification target:
+
+```text
+0 = vacant
+1 = occupied
+```
+
+Use 224x224 crops for MobileNetV3. When `--pretrained` is passed, the training dataset uses ImageNet normalization:
+
+```text
+mean = [0.485, 0.456, 0.406]
+std  = [0.229, 0.224, 0.225]
+```
+
+Training may download torchvision pretrained weights only when `--pretrained` is explicitly passed. The final saved checkpoint contains local weights and metadata, so later evaluation or app/demo loading can run offline from the saved `.pth` file.
+
+Local transfer-learning command:
+
+```bash
+python -m src.neural.train_cnn --model-version mobilenet_v3_small --pretrained --image-size 224 --epochs 5 --batch-size 64 --samples-per-class 2000 --patience 3 --output-model models/cnn/best_mobilenetv3_transfer.pth --output-dir results/metrics/mobilenetv3_transfer
+```
+
+Colab full training command:
+
+```bash
+python -m src.neural.train_cnn --model-version mobilenet_v3_small --pretrained --image-size 224 --epochs 20 --batch-size 64 --samples-per-class 12000 --patience 6 --weight-decay 0.0001 --output-model models/cnn/best_mobilenetv3_transfer.pth --output-dir results/metrics/mobilenetv3_transfer
+```
+
+Optional frozen-backbone smoke training:
+
+```bash
+python -m src.neural.train_cnn --model-version mobilenet_v3_small --pretrained --freeze-backbone --image-size 224 --epochs 2 --batch-size 16 --samples-per-class 100 --patience 1 --output-model models/cnn/best_mobilenetv3_transfer_smoke.pth --output-dir results/metrics/mobilenetv3_transfer_smoke
+```
+
+MobileNet checkpoints include:
+
+```text
+model_version
+image_size
+normalize_mode
+threshold / decision_threshold
+class_names
+pretrained
+freeze_backbone
+```
 
 ## Phase 6 Comparison Status
 
