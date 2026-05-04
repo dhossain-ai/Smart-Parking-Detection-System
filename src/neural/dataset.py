@@ -13,6 +13,11 @@ from src.classical.features import crop_slot_image, resolve_image_path
 
 LABEL_TO_TARGET = {"vacant": 0, "occupied": 1}
 TARGET_TO_LABEL = {0: "vacant", 1: "occupied"}
+NORMALIZE_STANDARD = "standard"
+NORMALIZE_IMAGENET = "imagenet"
+IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+NORMALIZE_MODES = {NORMALIZE_STANDARD, NORMALIZE_IMAGENET}
 
 
 class PKLotSlotDataset(Dataset):
@@ -24,7 +29,13 @@ class PKLotSlotDataset(Dataset):
         max_per_class: int | None = None,
         seed: int = 42,
         allow_horizontal_flip: bool = True,
+        normalize_mode: str = NORMALIZE_STANDARD,
     ) -> None:
+        if normalize_mode not in NORMALIZE_MODES:
+            raise ValueError(
+                f"Unsupported normalize_mode: {normalize_mode}. "
+                f"Expected one of: {sorted(NORMALIZE_MODES)}"
+            )
         self.records = load_manifest_records(
             manifest_path,
             max_per_class=max_per_class,
@@ -33,6 +44,7 @@ class PKLotSlotDataset(Dataset):
         self.image_size = image_size
         self.augment = augment
         self.allow_horizontal_flip = allow_horizontal_flip
+        self.normalize_mode = normalize_mode
         self.rng = np.random.default_rng(seed)
 
         if not self.records:
@@ -47,7 +59,7 @@ class PKLotSlotDataset(Dataset):
         if self.augment:
             crop = self._augment(crop)
 
-        tensor = self._to_tensor(crop)
+        tensor = self._to_tensor(crop, normalize_mode=self.normalize_mode)
         target = torch.tensor(record.target, dtype=torch.long)
         return tensor, target
 
@@ -105,9 +117,17 @@ class PKLotSlotDataset(Dataset):
         return np.clip(crop, 0, 255).astype(np.uint8)
 
     @staticmethod
-    def _to_tensor(crop_rgb: np.ndarray) -> torch.Tensor:
+    def _to_tensor(crop_rgb: np.ndarray, normalize_mode: str = NORMALIZE_STANDARD) -> torch.Tensor:
+        if normalize_mode not in NORMALIZE_MODES:
+            raise ValueError(
+                f"Unsupported normalize_mode: {normalize_mode}. "
+                f"Expected one of: {sorted(NORMALIZE_MODES)}"
+            )
         array = crop_rgb.astype(np.float32) / 255.0
-        array = (array - 0.5) / 0.5
+        if normalize_mode == NORMALIZE_IMAGENET:
+            array = (array - IMAGENET_MEAN) / IMAGENET_STD
+        else:
+            array = (array - 0.5) / 0.5
         array = np.transpose(array, (2, 0, 1))
         return torch.from_numpy(np.ascontiguousarray(array)).float()
 

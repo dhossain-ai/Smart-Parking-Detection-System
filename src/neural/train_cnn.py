@@ -19,7 +19,7 @@ except ModuleNotFoundError:
         return iterable
 
 from src.data.coco_utils import readable_relative_path
-from src.neural.dataset import PKLotSlotDataset, count_targets
+from src.neural.dataset import NORMALIZE_IMAGENET, NORMALIZE_STANDARD, PKLotSlotDataset, count_targets
 from src.neural.evaluate_cnn import (
     build_threshold_sweep,
     compute_metrics,
@@ -40,6 +40,9 @@ FULL_VALID_MANIFEST = Path("data/splits/valid_slots.csv")
 FULL_TEST_MANIFEST = Path("data/splits/test_slots.csv")
 DEFAULT_OUTPUT_MODEL = Path("models/cnn/best_cnn_model_v2.pth")
 DEFAULT_OUTPUT_DIR = Path("results/metrics/cnn_tuned")
+DEFAULT_MOBILENET_OUTPUT_MODEL = Path("models/cnn/best_mobilenetv3_transfer.pth")
+DEFAULT_MOBILENET_OUTPUT_DIR = Path("results/metrics/mobilenetv3_transfer")
+MODEL_CHOICES = ["v1", "v2", "mobilenet_v3_small"]
 
 
 def _parse_args() -> argparse.Namespace:
@@ -47,7 +50,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--train-manifest", type=Path, default=None)
     parser.add_argument("--valid-manifest", type=Path, default=None)
     parser.add_argument("--test-manifest", type=Path, default=None)
-    parser.add_argument("--model-version", choices=["v1", "v2"], default="v2")
+    parser.add_argument("--model-version", choices=MODEL_CHOICES, default="v2")
+    parser.add_argument("--pretrained", action="store_true")
+    parser.add_argument("--freeze-backbone", action="store_true")
     parser.add_argument("--image-size", type=int, default=64)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=10)
@@ -102,6 +107,37 @@ def _parse_eval_threshold(value: str) -> float | None:
     if not 0.0 < threshold < 1.0:
         raise ValueError("--eval-threshold must be 'auto' or a number between 0 and 1")
     return threshold
+
+
+def normalize_mode_for_args(args: argparse.Namespace) -> str:
+    if args.model_version == "mobilenet_v3_small" and args.pretrained:
+        return NORMALIZE_IMAGENET
+    return NORMALIZE_STANDARD
+
+
+def normalize_output_paths(args: argparse.Namespace) -> None:
+    if args.model_version != "mobilenet_v3_small":
+        return
+    if args.output_model == DEFAULT_OUTPUT_MODEL:
+        args.output_model = DEFAULT_MOBILENET_OUTPUT_MODEL
+    if args.output_dir == DEFAULT_OUTPUT_DIR:
+        args.output_dir = DEFAULT_MOBILENET_OUTPUT_DIR
+
+
+def architecture_name(model_version: str) -> str:
+    if model_version == "v1":
+        return "ParkingSlotCNN"
+    if model_version == "v2":
+        return "ParkingSlotCNNV2"
+    if model_version == "mobilenet_v3_small":
+        return "MobileNetV3-Small"
+    raise ValueError(f"Unsupported CNN model version: {model_version}")
+
+
+def figure_prefix_for_args(args: argparse.Namespace) -> str:
+    if args.model_version == "mobilenet_v3_small":
+        return args.output_dir.name if args.output_dir.name.startswith("mobilenetv3") else "mobilenetv3"
+    return "cnn_tuned" if args.output_dir.name == "cnn_tuned" else "cnn"
 
 
 def set_random_seeds(seed: int) -> None:
@@ -200,12 +236,14 @@ def evaluate_loss_and_predictions(
 
 def train_cnn(args: argparse.Namespace) -> int:
     set_random_seeds(args.seed)
+    normalize_output_paths(args)
     train_manifest = args.train_manifest or _default_manifest("train", args.samples_per_class)
     valid_manifest = args.valid_manifest or _default_manifest("valid", args.samples_per_class)
     test_manifest = args.test_manifest or _default_manifest("test", args.samples_per_class)
     max_train_per_class = _per_class_limit(args.max_train_per_class, args.samples_per_class)
     max_valid_per_class = _per_class_limit(args.max_valid_per_class, args.samples_per_class)
     max_test_per_class = _per_class_limit(args.max_test_per_class, args.samples_per_class)
+    normalize_mode = normalize_mode_for_args(args)
 
     output_model_path = _resolve_project_path(args.output_model)
     output_dir = _resolve_project_path(args.output_dir)
@@ -220,6 +258,7 @@ def train_cnn(args: argparse.Namespace) -> int:
         augment=not args.no_augment,
         max_per_class=max_train_per_class,
         seed=args.seed,
+        normalize_mode=normalize_mode,
     )
     valid_dataset = PKLotSlotDataset(
         valid_manifest,
@@ -227,6 +266,7 @@ def train_cnn(args: argparse.Namespace) -> int:
         augment=False,
         max_per_class=max_valid_per_class,
         seed=args.seed,
+        normalize_mode=normalize_mode,
     )
     test_dataset = PKLotSlotDataset(
         test_manifest,
@@ -234,6 +274,7 @@ def train_cnn(args: argparse.Namespace) -> int:
         augment=False,
         max_per_class=max_test_per_class,
         seed=args.seed,
+        normalize_mode=normalize_mode,
     )
 
     train_loader = make_loader(
@@ -261,11 +302,16 @@ def train_cnn(args: argparse.Namespace) -> int:
     model = build_model(
         num_classes=2,
         model_version=args.model_version,
+        pretrained=args.pretrained,
+        freeze_backbone=args.freeze_backbone,
         dropout=args.dropout,
     ).to(device)
     criterion = nn.CrossEntropyLoss()
+    trainable_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
+    if not trainable_parameters:
+        raise RuntimeError("No trainable model parameters are available.")
     optimizer = torch.optim.Adam(
-        model.parameters(),
+        trainable_parameters,
         lr=args.lr,
         weight_decay=args.weight_decay,
     )
@@ -277,18 +323,27 @@ def train_cnn(args: argparse.Namespace) -> int:
     )
 
     print("CNN training configuration")
+    print(f"torch version: {torch.__version__}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
     print(f"Device: {device}")
     print(f"Model version: {args.model_version}")
+    print(f"Pretrained: {args.pretrained}")
+    print(f"Freeze backbone: {args.freeze_backbone}")
+    print(f"Image size: {args.image_size}")
+    print(f"Normalize mode: {normalize_mode}")
     print(f"Train manifest: {train_manifest}")
     print(f"Valid manifest: {valid_manifest}")
     print(f"Test manifest: {test_manifest}")
-    print(f"Train records: {len(train_dataset)} {count_targets(train_dataset)}")
-    print(f"Valid records: {len(valid_dataset)} {count_targets(valid_dataset)}")
-    print(f"Test records: {len(test_dataset)} {count_targets(test_dataset)}")
+    print(f"Train records used: {len(train_dataset)} {count_targets(train_dataset)}")
+    print(f"Valid records used: {len(valid_dataset)} {count_targets(valid_dataset)}")
+    print(f"Test records used: {len(test_dataset)} {count_targets(test_dataset)}")
     print(f"Epochs: {args.epochs}")
     print(f"Batch size: {args.batch_size}")
 
     history: list[dict[str, Any]] = []
+    architecture = architecture_name(args.model_version)
     best_valid_f1 = -1.0
     best_epoch = 0
     epochs_without_improvement = 0
@@ -329,14 +384,18 @@ def train_cnn(args: argparse.Namespace) -> int:
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
-                    "architecture": "ParkingSlotCNN" if args.model_version == "v1" else "ParkingSlotCNNV2",
+                    "architecture": architecture,
                     "model_version": args.model_version,
+                    "pretrained": args.pretrained,
+                    "freeze_backbone": args.freeze_backbone,
                     "dropout": args.dropout,
                     "image_size": args.image_size,
+                    "normalize_mode": normalize_mode,
                     "epoch": epoch,
                     "best_valid_f1": best_valid_f1,
                     "history": history,
                     "label_to_target": {"vacant": 0, "occupied": 1},
+                    "class_names": ["vacant", "occupied"],
                 },
                 output_model_path,
             )
@@ -400,9 +459,12 @@ def train_cnn(args: argparse.Namespace) -> int:
     test_metrics = compute_metrics(y_test, pred_test, "test", test_seconds)
 
     for metrics in [valid_metrics, test_metrics]:
-        metrics["architecture"] = "ParkingSlotCNN" if args.model_version == "v1" else "ParkingSlotCNNV2"
+        metrics["architecture"] = architecture
         metrics["model_version"] = args.model_version
+        metrics["pretrained"] = args.pretrained
+        metrics["freeze_backbone"] = args.freeze_backbone
         metrics["image_size"] = args.image_size
+        metrics["normalize_mode"] = normalize_mode
         metrics["batch_size"] = args.batch_size
         metrics["epochs_completed"] = len(history)
         metrics["best_epoch"] = best_epoch
@@ -417,13 +479,16 @@ def train_cnn(args: argparse.Namespace) -> int:
     valid_metrics["loss"] = float(valid_loss)
 
     checkpoint["decision_threshold"] = decision_threshold
+    checkpoint["threshold"] = decision_threshold
     checkpoint["threshold_selection"] = threshold_selection
     checkpoint["threshold_valid_f1"] = threshold_valid_f1
     checkpoint["history"] = history
+    checkpoint["class_names"] = ["vacant", "occupied"]
+    checkpoint["normalize_mode"] = normalize_mode
     torch.save(checkpoint, output_model_path)
 
     pd.DataFrame(history).to_csv(output_dir / "training_history.csv", index=False)
-    figure_prefix = "cnn_tuned" if output_dir.name == "cnn_tuned" else "cnn"
+    figure_prefix = figure_prefix_for_args(args)
     save_evaluation_outputs(
         output_dir=output_dir,
         figures_dir=FIGURES_DIR,
@@ -435,7 +500,12 @@ def train_cnn(args: argparse.Namespace) -> int:
         extra={
             "model": readable_relative_path(output_model_path, PROJECT_ROOT),
             "device": str(device),
+            "architecture": architecture,
             "model_version": args.model_version,
+            "pretrained": args.pretrained,
+            "freeze_backbone": args.freeze_backbone,
+            "image_size": args.image_size,
+            "normalize_mode": normalize_mode,
             "decision_threshold": decision_threshold,
             "threshold_selection": threshold_selection,
             "threshold_valid_f1": threshold_valid_f1,

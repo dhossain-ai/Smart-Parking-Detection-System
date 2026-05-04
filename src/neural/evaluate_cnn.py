@@ -25,7 +25,7 @@ from sklearn.metrics import (
 from torch.utils.data import DataLoader
 
 from src.data.coco_utils import readable_relative_path
-from src.neural.dataset import PKLotSlotDataset
+from src.neural.dataset import NORMALIZE_STANDARD, PKLotSlotDataset
 from src.neural.model import build_model
 from src.utils.config import FIGURES_DIR, PROJECT_ROOT
 
@@ -365,7 +365,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint", type=Path, default=Path("models/cnn/best_cnn_model.pth"))
     parser.add_argument("--valid-manifest", type=Path, default=Path("data/splits/valid_slots_balanced_small.csv"))
     parser.add_argument("--test-manifest", type=Path, default=Path("data/splits/test_slots_balanced_small.csv"))
-    parser.add_argument("--image-size", type=int, default=64)
+    parser.add_argument("--image-size", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--output-dir", type=Path, default=Path("results/metrics/cnn"))
@@ -387,18 +387,36 @@ def main() -> int:
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model_version = checkpoint.get("model_version", "v1")
     dropout = float(checkpoint.get("dropout", 0.35 if model_version == "v1" else 0.3))
-    model = build_model(num_classes=2, model_version=model_version, dropout=dropout).to(device)
+    image_size = int(args.image_size or checkpoint.get("image_size", 64))
+    normalize_mode = str(checkpoint.get("normalize_mode", NORMALIZE_STANDARD))
+    model = build_model(
+        num_classes=2,
+        model_version=model_version,
+        pretrained=False,
+        freeze_backbone=False,
+        dropout=dropout,
+    ).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     threshold = float(checkpoint.get("decision_threshold", 0.5))
 
     valid_loader = DataLoader(
-        PKLotSlotDataset(args.valid_manifest, image_size=args.image_size, augment=False),
+        PKLotSlotDataset(
+            args.valid_manifest,
+            image_size=image_size,
+            augment=False,
+            normalize_mode=normalize_mode,
+        ),
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
     )
     test_loader = DataLoader(
-        PKLotSlotDataset(args.test_manifest, image_size=args.image_size, augment=False),
+        PKLotSlotDataset(
+            args.test_manifest,
+            image_size=image_size,
+            augment=False,
+            normalize_mode=normalize_mode,
+        ),
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
@@ -418,6 +436,12 @@ def main() -> int:
     )
     valid_metrics = compute_metrics(y_valid, pred_valid, "valid", valid_seconds)
     test_metrics = compute_metrics(y_test, pred_test, "test", test_seconds)
+    for metrics in [valid_metrics, test_metrics]:
+        metrics["architecture"] = checkpoint.get("architecture", model_version)
+        metrics["model_version"] = model_version
+        metrics["image_size"] = image_size
+        metrics["normalize_mode"] = normalize_mode
+        metrics["decision_threshold"] = threshold
     valid_sweep = build_threshold_sweep(y_valid, valid_scores, split="valid")
     test_sweep = build_threshold_sweep(y_test, test_scores, split="test")
     threshold_sweep = pd.concat([valid_sweep, test_sweep], ignore_index=True)
@@ -434,6 +458,8 @@ def main() -> int:
             "checkpoint": readable_relative_path(checkpoint_path, PROJECT_ROOT),
             "decision_threshold": threshold,
             "model_version": model_version,
+            "image_size": image_size,
+            "normalize_mode": normalize_mode,
             "threshold_note": "Threshold is applied to occupied probability.",
         },
         threshold_sweep=threshold_sweep,
