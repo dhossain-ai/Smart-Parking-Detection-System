@@ -279,9 +279,9 @@ def image_detection_page() -> None:
     st.markdown(
         """
         <div class="note-box">
-        Selected images come from the PKLot test split and use COCO parking-slot coordinates.
-        This tests the model on unseen test images. For a custom image, parking-slot calibration
-        or annotation coordinates are required.
+        Random/selected images come from the PKLot test split and use COCO parking-slot coordinates.
+        This tests the model on unseen test images. For a custom image, parking-slot calibration or
+        annotation coordinates are required.
         </div>
         """,
         unsafe_allow_html=True,
@@ -300,16 +300,25 @@ def image_detection_page() -> None:
         slot_counts = dict(zip(grouped["image_path"].astype(str), grouped["slot_count"].astype(int)))
     else:
         st.warning("Test split manifest is missing or does not contain image paths.")
+    random_options = [path for path in image_options if slot_counts.get(path, 0) >= 50] or image_options
 
     st.subheader("Input Source")
     input_source = st.radio(
         "Image input",
-        ["Default demo image", "Select test image"],
+        ["Default demo image", "Random test image", "Select test image"],
         horizontal=True,
     )
 
     selected_image_path: str | None = None
-    if input_source == "Select test image":
+    if input_source == "Random test image":
+        if random_options:
+            st.caption(
+                "Run Detection will sample a PKLot test image. Images with at least 50 annotated slots "
+                "are preferred when available."
+            )
+        else:
+            st.error("No annotated PKLot test images are available for random selection.")
+    elif input_source == "Select test image":
         if image_options:
             selected_image_path = st.selectbox(
                 "PKLot test image",
@@ -337,11 +346,19 @@ def image_detection_page() -> None:
         "the model must know where the parking spaces are."
     )
 
-    run_disabled = input_source == "Select test image" and selected_image_path is None
+    run_disabled = (
+        (input_source == "Select test image" and selected_image_path is None)
+        or (input_source == "Random test image" and not random_options)
+    )
     if st.button("Run Detection", type="primary", disabled=run_disabled):
+        run_image_path = selected_image_path
+        if input_source == "Random test image":
+            run_image_path = str(pd.Series(random_options).sample(n=1).iloc[0])
+            st.session_state["image_demo_random_image"] = run_image_path
+
         command = [sys.executable, "-m", "src.visualization.demo_image", "--model-type", model_type]
-        if selected_image_path:
-            command.extend(["--image-path", selected_image_path])
+        if run_image_path:
+            command.extend(["--image-path", run_image_path])
 
         with st.spinner(f"Running local {model_label} image detection..."):
             result = run_command(command)
@@ -350,11 +367,14 @@ def image_detection_page() -> None:
         if result.returncode == 0:
             st.session_state["image_demo_last_model"] = model_type
             st.session_state["image_demo_last_source"] = input_source
-            st.session_state["image_demo_last_image"] = selected_image_path or "Default demo image"
+            st.session_state["image_demo_last_image"] = run_image_path or "Default demo image"
 
+    current_image_label = selected_image_path or "Default demo image"
+    if input_source == "Random test image":
+        current_image_label = st.session_state.get("image_demo_random_image", "Random test image not run yet")
     latest_model = st.session_state.get("image_demo_last_model", model_type)
     latest_source = st.session_state.get("image_demo_last_source", input_source)
-    latest_image = st.session_state.get("image_demo_last_image", selected_image_path or "Default demo image")
+    latest_image = st.session_state.get("image_demo_last_image", current_image_label)
 
     summary_path = PATHS["image_cnn_summary"] if latest_model == "cnn" else PATHS["image_classical_summary"]
     side_by_side_path = PATHS["image_cnn_side"] if latest_model == "cnn" else PATHS["image_classical_side"]
