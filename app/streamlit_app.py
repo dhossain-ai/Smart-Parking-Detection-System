@@ -14,6 +14,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 PATHS = {
+    "cnn_model": "models/cnn/best_mobilenetv3_transfer_final.pth",
+    "classical_model": "models/classical/classical_lbp_hsv_hog_svm.joblib",
     "model_comparison": "results/metrics/comparison/model_comparison.csv",
     "requirement_checklist": "results/metrics/comparison/requirement_checklist.csv",
     "false_occupancy": "results/metrics/comparison/false_occupancy_comparison.csv",
@@ -21,26 +23,21 @@ PATHS = {
     "weather_report": "results/metrics/comparison/weather_robustness_report.md",
     "weather_placeholder": "results/metrics/comparison/weather_robustness_placeholder.csv",
     "classical_metrics": "results/metrics/classical/classical_metrics.json",
-    "cnn_metrics": "results/metrics/cnn_tuned/cnn_metrics.json",
+    "cnn_metrics": "results/metrics/mobilenetv3_transfer_final/cnn_metrics.json",
     "image_cnn": "results/images/demo_image_cnn_output.jpg",
     "image_cnn_side": "results/images/demo_image_cnn_side_by_side.jpg",
     "image_classical_side": "results/images/demo_image_classical_side_by_side.jpg",
     "image_summary": "results/metrics/demo_image/demo_image_summary.json",
     "image_cnn_summary": "results/metrics/demo_image/demo_image_cnn_summary.json",
     "image_classical_summary": "results/metrics/demo_image/demo_image_classical_summary.json",
-    "video_cnn": "results/videos/demo_video_cnn_output.mp4",
-    "video_cnn_side": "results/videos/demo_video_cnn_side_by_side.mp4",
-    "video_classical": "results/videos/demo_video_classical_output.mp4",
-    "video_classical_side": "results/videos/demo_video_classical_side_by_side.mp4",
-    "video_trend": "results/metrics/demo_video/demo_video_occupancy_trend.csv",
-    "video_cnn_summary": "results/metrics/demo_video/demo_video_cnn_summary.json",
-    "video_classical_summary": "results/metrics/demo_video/demo_video_classical_summary.json",
     "fig_model_metrics": "results/figures/model_metrics_comparison.png",
     "fig_requirement": "results/figures/requirement_checklist.png",
     "fig_false_occupancy": "results/figures/false_occupancy_comparison.png",
     "fig_classical_cm": "results/figures/classical_confusion_matrix.png",
-    "fig_cnn_cm": "results/figures/cnn_tuned_confusion_matrix.png",
+    "fig_cnn_cm": "results/figures/mobilenetv3_transfer_final_confusion_matrix.png",
 }
+
+IMAGE_DEMO_COMMAND = "python -m src.visualization.demo_image --model-type cnn"
 
 
 def project_path(relative_path: str | Path) -> Path:
@@ -55,30 +52,43 @@ def file_exists(relative_path: str | Path) -> bool:
 def load_json(relative_path: str | Path) -> dict[str, Any] | None:
     path = project_path(relative_path)
     if not path.is_file():
+        st.warning(f"Missing JSON file: `{relative_path}`")
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         st.warning(f"Could not parse JSON: `{relative_path}`")
         return None
+    except OSError as error:
+        st.warning(f"Could not read JSON `{relative_path}`: {error}")
+        return None
 
 
 def load_csv(relative_path: str | Path) -> pd.DataFrame | None:
     path = project_path(relative_path)
     if not path.is_file():
+        st.warning(f"Missing CSV file: `{relative_path}`")
         return None
     try:
         return pd.read_csv(path)
     except pd.errors.ParserError:
         st.warning(f"Could not parse CSV: `{relative_path}`")
         return None
+    except OSError as error:
+        st.warning(f"Could not read CSV `{relative_path}`: {error}")
+        return None
 
 
 def load_markdown(relative_path: str | Path) -> str | None:
     path = project_path(relative_path)
     if not path.is_file():
+        st.warning(f"Missing report file: `{relative_path}`")
         return None
-    return path.read_text(encoding="utf-8")
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError as error:
+        st.warning(f"Could not read report `{relative_path}`: {error}")
+        return None
 
 
 def run_command(command: list[str], timeout: int = 900) -> subprocess.CompletedProcess[str]:
@@ -92,10 +102,6 @@ def run_command(command: list[str], timeout: int = 900) -> subprocess.CompletedP
     )
 
 
-def command_text(command: list[str]) -> str:
-    return subprocess.list2cmdline(command)
-
-
 def timeout_output(value: str | bytes | None) -> str:
     if value is None:
         return ""
@@ -104,10 +110,10 @@ def timeout_output(value: str | bytes | None) -> str:
     return value
 
 
-def show_image_if_exists(relative_path: str | Path, caption: str, use_container_width: bool = True) -> None:
+def show_image_if_exists(relative_path: str | Path, caption: str) -> None:
     path = project_path(relative_path)
     if path.is_file():
-        st.image(str(path), caption=caption, use_container_width=use_container_width)
+        st.image(str(path), caption=caption, use_column_width=True)
     else:
         st.warning(f"Missing image: `{relative_path}`")
 
@@ -115,18 +121,9 @@ def show_image_if_exists(relative_path: str | Path, caption: str, use_container_
 def show_image_bytes_if_exists(relative_path: str | Path, caption: str) -> None:
     path = project_path(relative_path)
     if path.is_file():
-        st.image(path.read_bytes(), caption=caption, use_container_width=True)
+        st.image(path.read_bytes(), caption=caption, use_column_width=True)
     else:
         st.warning(f"Missing image: `{relative_path}`")
-
-
-def show_video_if_exists(relative_path: str | Path, caption: str) -> None:
-    path = project_path(relative_path)
-    if path.is_file():
-        st.markdown(f"**{caption}**")
-        st.video(str(path))
-    else:
-        st.warning(f"Missing video: `{relative_path}`")
 
 
 def metric_value(metrics: dict[str, Any] | None, key: str, default: str = "NA") -> str:
@@ -140,7 +137,7 @@ def metric_value(metrics: dict[str, Any] | None, key: str, default: str = "NA") 
 
 def status_from_checklist(method: str) -> str:
     checklist = load_csv(PATHS["requirement_checklist"])
-    if checklist is None:
+    if checklist is None or not {"method", "passed"}.issubset(checklist.columns):
         return "Unavailable"
     rows = checklist.loc[checklist["method"] == method]
     if rows.empty:
@@ -148,7 +145,7 @@ def status_from_checklist(method: str) -> str:
     if bool((rows["passed"] == "Yes").all()):
         return "Met"
     if bool((rows["passed"] == "Yes").any()):
-        return "Partially met"
+        return "Mostly met"
     return "Not met"
 
 
@@ -162,6 +159,23 @@ def show_command_result(result: subprocess.CompletedProcess[str]) -> None:
             st.code(result.stdout, language="text")
         if result.stderr:
             st.code(result.stderr, language="text")
+
+
+def demo_command_text(model_type: str, image_path: str | None = None) -> str:
+    command = f"python -m src.visualization.demo_image --model-type {model_type}"
+    if image_path:
+        command += f" --image-path \"{image_path}\""
+    return command
+
+
+def reset_image_demo_to_cnn() -> None:
+    st.session_state["image_demo_initialized"] = True
+    st.session_state["image_demo_last_model"] = "cnn"
+    st.session_state["image_demo_last_source"] = "Default demo image"
+    st.session_state["image_demo_last_image"] = "Default demo image"
+    st.session_state["image_demo_last_summary"] = load_json(PATHS["image_cnn_summary"])
+    st.session_state["image_demo_last_side_by_side"] = PATHS["image_cnn_side"]
+    st.session_state["image_demo_last_processed"] = PATHS["image_cnn"]
 
 
 def card(title: str, body: str, tone: str = "default") -> None:
@@ -260,18 +274,17 @@ def dashboard_page() -> None:
     classical = load_json(PATHS["classical_metrics"])
     cnn = load_json(PATHS["cnn_metrics"])
     image_available = "Yes" if file_exists(PATHS["image_cnn_side"]) else "No"
-    video_available = "Yes" if file_exists(PATHS["video_cnn_side"]) else "No"
     dataset_slots = metric_value(cnn, "records", default=metric_value(classical, "records"))
 
     cols = st.columns(4)
     with cols[0]:
         card("Classical Accuracy", metric_value(classical, "accuracy"), "green")
     with cols[1]:
-        card("CNN Accuracy", metric_value(cnn, "accuracy"), "blue")
+        card("MobileNetV3 Accuracy", metric_value(cnn, "accuracy"), "blue")
     with cols[2]:
         card("Classical Requirement", status_from_checklist("Classical"), "green")
     with cols[3]:
-        card("CNN Requirement", status_from_checklist("CNN"), "red")
+        card("MobileNetV3 Requirement", status_from_checklist("CNN"), "red")
 
     cols = st.columns(3)
     with cols[0]:
@@ -279,12 +292,13 @@ def dashboard_page() -> None:
     with cols[1]:
         card("Image Demo Available", image_available, "green" if image_available == "Yes" else "red")
     with cols[2]:
-        card("Video Demo Available", video_available, "green" if video_available == "Yes" else "red")
+        card("Neural Model", "MobileNetV3-Small", "blue")
 
     st.markdown(
         """
         <div class="note-box">
         No external internet APIs are used. The app runs local OpenCV + scikit-learn + PyTorch demo pipelines.
+        The final neural model is MobileNetV3-Small transfer learning.
         </div>
         """,
         unsafe_allow_html=True,
@@ -295,6 +309,9 @@ def dashboard_page() -> None:
 
 def image_detection_page() -> None:
     st.header("Image Detection")
+    if "image_demo_initialized" not in st.session_state:
+        reset_image_demo_to_cnn()
+
     st.info("This demo uses known parking-slot coordinates from COCO annotations.")
     st.markdown(
         """
@@ -367,9 +384,19 @@ def image_detection_page() -> None:
         "the model must know where the parking spaces are."
     )
 
+    if st.button("Reset to saved CNN demo"):
+        reset_image_demo_to_cnn()
+        st.rerun()
+
+    model_path = PATHS["cnn_model"] if model_type == "cnn" else PATHS["classical_model"]
+    model_missing = not file_exists(model_path)
+    if model_missing:
+        st.error(f"Required local model is missing: `{model_path}`")
+
     run_disabled = (
         (input_source == "Select test image" and selected_image_path is None)
         or (input_source == "Random test image" and not random_options)
+        or model_missing
     )
     if st.button("Run Detection", type="primary", disabled=run_disabled):
         run_image_path = selected_image_path
@@ -383,15 +410,15 @@ def image_detection_page() -> None:
         if run_image_path:
             command.extend(["--image-path", run_image_path])
 
-        st.session_state["image_demo_last_command"] = command_text(command)
+        st.session_state["image_demo_last_command"] = demo_command_text(model_type, run_image_path)
         st.markdown("**Command**")
         st.code(st.session_state["image_demo_last_command"], language="bash")
 
         try:
             with st.spinner(f"Running local {model_label} image detection..."):
-                result = run_command(command, timeout=120)
+                result = run_command(command, timeout=600)
         except subprocess.TimeoutExpired as error:
-            st.error("Image detection command timed out after 120 seconds.")
+            st.error("Image detection command timed out after 600 seconds.")
             with st.expander("Command output", expanded=True):
                 stdout = timeout_output(error.stdout)
                 stderr = timeout_output(error.stderr)
@@ -404,7 +431,8 @@ def image_detection_page() -> None:
         if result is not None:
             show_command_result(result)
             if result.returncode == 0:
-                summary = load_json(PATHS["image_summary"]) or {}
+                summary_path = PATHS["image_cnn_summary"] if model_type == "cnn" else PATHS["image_classical_summary"]
+                summary = load_json(summary_path) or {}
                 st.session_state["image_demo_last_model"] = model_type
                 st.session_state["image_demo_last_source"] = input_source
                 st.session_state["image_demo_last_image"] = summary.get(
@@ -412,13 +440,11 @@ def image_detection_page() -> None:
                     run_image_path or "Default demo image",
                 )
                 st.session_state["image_demo_last_summary"] = summary
-                st.session_state["image_demo_last_side_by_side"] = summary.get(
-                    "output_side_by_side",
-                    PATHS["image_cnn_side"] if model_type == "cnn" else PATHS["image_classical_side"],
+                st.session_state["image_demo_last_side_by_side"] = (
+                    PATHS["image_cnn_side"] if model_type == "cnn" else PATHS["image_classical_side"]
                 )
-                st.session_state["image_demo_last_processed"] = summary.get(
-                    "output_image",
-                    PATHS["image_cnn"] if model_type == "cnn" else "results/images/demo_image_classical_output.jpg",
+                st.session_state["image_demo_last_processed"] = (
+                    PATHS["image_cnn"] if model_type == "cnn" else "results/images/demo_image_classical_output.jpg"
                 )
                 st.success("Image detection output refreshed from disk.")
             else:
@@ -427,18 +453,15 @@ def image_detection_page() -> None:
     current_image_label = selected_image_path or "Default demo image"
     if input_source == "Random test image":
         current_image_label = st.session_state.get("image_demo_random_image", "Random test image not run yet")
-    latest_model = st.session_state.get("image_demo_last_model", model_type)
+    latest_model = st.session_state.get("image_demo_last_model", "cnn")
     latest_source = st.session_state.get("image_demo_last_source", input_source)
     latest_image = st.session_state.get("image_demo_last_image", current_image_label)
-
-    summary_path = PATHS["image_cnn_summary"] if latest_model == "cnn" else PATHS["image_classical_summary"]
-    side_by_side_path = PATHS["image_cnn_side"] if latest_model == "cnn" else PATHS["image_classical_side"]
-    processed_path = PATHS["image_cnn"] if latest_model == "cnn" else "results/images/demo_image_classical_output.jpg"
+    side_by_side_path = st.session_state.get("image_demo_last_side_by_side", PATHS["image_cnn_side"])
+    processed_path = st.session_state.get("image_demo_last_processed", PATHS["image_cnn"])
     summary = st.session_state.get("image_demo_last_summary")
     if not summary:
-        summary = load_json(summary_path) or load_json(PATHS["image_summary"])
-    side_by_side_path = st.session_state.get("image_demo_last_side_by_side", side_by_side_path)
-    processed_path = st.session_state.get("image_demo_last_processed", processed_path)
+        summary_path = PATHS["image_cnn_summary"] if latest_model == "cnn" else PATHS["image_classical_summary"]
+        summary = load_json(summary_path)
 
     st.subheader("Latest Output")
     st.caption(f"Source: {latest_source} | Image: `{latest_image}` | Model: {latest_model.upper()}")
@@ -464,72 +487,12 @@ def image_detection_page() -> None:
         st.json(summary or {"status": "missing"})
 
 
-def video_detection_page() -> None:
-    st.header("Video Detection")
-    st.markdown("**Annotated PKLot frame-sequence video demo**")
-    st.info("The current dataset provides annotated image frames, so the video demo is generated from PKLot test frames.")
-
-    cols = st.columns(2)
-    with cols[0]:
-        if st.button("Regenerate CNN video demo", type="primary"):
-            with st.spinner("Running local CNN frame-sequence video demo..."):
-                result = run_command([
-                    sys.executable,
-                    "-m",
-                    "src.visualization.demo_video",
-                    "--model-type",
-                    "cnn",
-                    "--num-frames",
-                    "30",
-                    "--fps",
-                    "5",
-                ])
-            show_command_result(result)
-    with cols[1]:
-        if st.button("Regenerate classical video demo"):
-            with st.spinner("Running local classical frame-sequence video demo..."):
-                result = run_command([
-                    sys.executable,
-                    "-m",
-                    "src.visualization.demo_video",
-                    "--model-type",
-                    "classical",
-                    "--num-frames",
-                    "15",
-                    "--fps",
-                    "5",
-                ])
-            show_command_result(result)
-
-    tab_cnn, tab_classical, tab_trend = st.tabs(["CNN Videos", "Classical Videos", "Occupancy Trend"])
-    with tab_cnn:
-        cols = st.columns(2)
-        with cols[0]:
-            show_video_if_exists(PATHS["video_cnn"], "CNN processed video")
-        with cols[1]:
-            show_video_if_exists(PATHS["video_cnn_side"], "CNN original vs processed video")
-    with tab_classical:
-        cols = st.columns(2)
-        with cols[0]:
-            show_video_if_exists(PATHS["video_classical"], "Classical processed video")
-        with cols[1]:
-            show_video_if_exists(PATHS["video_classical_side"], "Classical original vs processed video")
-    with tab_trend:
-        trend = load_csv(PATHS["video_trend"])
-        if trend is not None:
-            st.dataframe(trend, use_container_width=True)
-            if "occupancy_rate" in trend.columns:
-                st.line_chart(trend.set_index("frame_index")["occupancy_rate"])
-        else:
-            st.warning("Occupancy trend CSV is not available yet.")
-
-
 def compare_models_page() -> None:
     st.header("Classical vs CNN Comparison")
     st.markdown(
         """
         <div class="warning-box">
-        Classical method meets its requirement. Current CNN method partially meets the strict modern requirement.
+        Classical method meets its requirement. MobileNetV3 meets accuracy, recall, and F1 targets; precision is slightly below the strict target.
         </div>
         """,
         unsafe_allow_html=True,
@@ -569,19 +532,19 @@ def metrics_page() -> None:
         else:
             st.warning("Classical metrics JSON is missing.")
     with cols[1]:
-        st.subheader("CNN tuned test metrics")
+        st.subheader("MobileNetV3 test metrics")
         if cnn:
             st.dataframe(pd.DataFrame([cnn.get("test", {})]), use_container_width=True)
-            with st.expander("Raw CNN tuned metrics JSON"):
+            with st.expander("Raw MobileNetV3 final metrics JSON"):
                 st.json(cnn)
         else:
-            st.warning("CNN tuned metrics JSON is missing.")
+            st.warning("MobileNetV3 metrics JSON is missing.")
 
     cols = st.columns(2)
     with cols[0]:
         show_image_if_exists(PATHS["fig_classical_cm"], "Classical confusion matrix")
     with cols[1]:
-        show_image_if_exists(PATHS["fig_cnn_cm"], "CNN tuned confusion matrix")
+        show_image_if_exists(PATHS["fig_cnn_cm"], "MobileNetV3 confusion matrix")
 
     report = load_markdown(PATHS["final_report"])
     st.subheader("Final evaluation report")
@@ -630,7 +593,7 @@ def calibration_page() -> None:
         """
         This project uses known COCO bounding boxes for PKLot.
 
-        For a new real camera or arbitrary video, parking slots must be calibrated once for that fixed camera view.
+        For a new real camera image, parking slots must be calibrated once for that fixed camera view.
         Calibration JSON support can be added later so the app can reuse slot polygons or rectangles for live feeds.
 
         This keeps the task as parking-slot occupancy classification, not general vehicle detection.
@@ -646,13 +609,17 @@ def settings_page() -> None:
 
         **Positive class:** `occupied = positive class`
 
+        **Neural model:** MobileNetV3-Small transfer learning.
+
         **Libraries used:** OpenCV, NumPy, Pandas, scikit-image, scikit-learn, PyTorch, Matplotlib, Plotly, Streamlit.
 
         **Offline constraint:** no external internet APIs, hosted inference services, or cloud vision systems are used.
         """
     )
-    st.code("python -m src.visualization.demo_image --model-type cnn", language="bash")
-    st.code("python -m src.visualization.demo_video --model-type cnn --num-frames 30 --fps 5", language="bash")
+    st.markdown("**Final CNN model path:** `models/cnn/best_mobilenetv3_transfer_final.pth`")
+    st.markdown("**Final CNN metrics path:** `results/metrics/mobilenetv3_transfer_final/cnn_metrics.json`")
+    st.markdown("**Classical model path:** `models/classical/classical_lbp_hsv_hog_svm.joblib`")
+    st.code(IMAGE_DEMO_COMMAND, language="bash")
 
 
 def main() -> None:
@@ -670,7 +637,6 @@ def main() -> None:
         [
             "Dashboard",
             "Image Detection",
-            "Video Detection",
             "Compare Models",
             "Metrics",
             "Weather Robustness",
@@ -687,7 +653,6 @@ def main() -> None:
     pages = {
         "Dashboard": dashboard_page,
         "Image Detection": image_detection_page,
-        "Video Detection": video_detection_page,
         "Compare Models": compare_models_page,
         "Metrics": metrics_page,
         "Weather Robustness": weather_page,

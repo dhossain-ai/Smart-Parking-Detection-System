@@ -19,7 +19,7 @@ from src.classical.features import (
     extract_combined_features,
     resolve_image_path,
 )
-from src.neural.dataset import PKLotSlotDataset
+from src.neural.dataset import NORMALIZE_IMAGENET, NORMALIZE_STANDARD, PKLotSlotDataset
 from src.neural.model import build_model
 from src.utils.config import PROJECT_ROOT, RESULT_IMAGES_DIR
 from src.visualization.draw_overlays import (
@@ -31,9 +31,9 @@ from src.visualization.draw_overlays import (
 
 
 DEFAULT_MANIFEST = Path("data/splits/test_slots.csv")
-DEFAULT_CNN_MODEL = Path("models/cnn/best_cnn_model_v2.pth")
+DEFAULT_CNN_MODEL = Path("models/cnn/best_mobilenetv3_transfer_final.pth")
 DEFAULT_CLASSICAL_MODEL = Path("models/classical/classical_lbp_hsv_hog_svm.joblib")
-DEFAULT_CNN_METRICS = Path("results/metrics/cnn_tuned/cnn_metrics.json")
+DEFAULT_CNN_METRICS = Path("results/metrics/mobilenetv3_transfer_final/cnn_metrics.json")
 DEFAULT_OUTPUT_DIR = Path("results/metrics/demo_image")
 LABEL_BY_TARGET = {0: "vacant", 1: "occupied"}
 
@@ -43,13 +43,20 @@ class CNNPredictor:
         self.model_path = model_path
         self.threshold = threshold
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model, self.model_version = _load_cnn_model(model_path, self.device)
-        self.model_name = f"CNN {self.model_version}"
+        self.model, self.model_version, self.image_size, self.normalize_mode = _load_cnn_model(
+            model_path,
+            self.device,
+        )
+        self.model_name = _friendly_cnn_name(self.model_version)
 
     @torch.no_grad()
     def predict(self, records: list[SlotRecord], image_rgb: np.ndarray) -> list[dict[str, Any]]:
-        crops = [_crop_record(image_rgb, record, image_size=64) for record in records]
-        batch = torch.stack([_tensor_from_crop(crop) for crop in crops], dim=0).to(self.device)
+        # CNN crops must use the same image size and normalization used during training.
+        crops = [_crop_record(image_rgb, record, image_size=self.image_size) for record in records]
+        batch = torch.stack(
+            [_tensor_from_crop(crop, normalize_mode=self.normalize_mode) for crop in crops],
+            dim=0,
+        ).to(self.device)
         logits = self.model(batch)
         probabilities = torch.softmax(logits, dim=1)[:, 1].detach().cpu().numpy()
 
@@ -119,7 +126,7 @@ def _resolve_project_path(path: Path) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
-def _read_threshold_from_metrics(default: float = 0.48) -> float:
+def _read_threshold_from_metrics(default: float = 0.14) -> float:
     metrics_path = _resolve_project_path(DEFAULT_CNN_METRICS)
     if not metrics_path.is_file():
         return default
@@ -138,7 +145,7 @@ def _read_threshold_from_metrics(default: float = 0.48) -> float:
     return default
 
 
-def read_cnn_threshold(default: float = 0.48) -> float:
+def read_cnn_threshold(default: float = 0.14) -> float:
     return _read_threshold_from_metrics(default=default)
 
 
@@ -258,8 +265,8 @@ def _crop_record(image_rgb: np.ndarray, record: SlotRecord, image_size: int = 64
     return cv2.resize(crop, (image_size, image_size), interpolation=cv2.INTER_AREA)
 
 
-def _tensor_from_crop(crop_rgb: np.ndarray) -> torch.Tensor:
-    return PKLotSlotDataset._to_tensor(crop_rgb)
+def _tensor_from_crop(crop_rgb: np.ndarray, normalize_mode: str = NORMALIZE_STANDARD) -> torch.Tensor:
+    return PKLotSlotDataset._to_tensor(crop_rgb, normalize_mode=normalize_mode)
 
 
 def _clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
@@ -269,41 +276,75 @@ def _clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
-def _checkpoint_state(checkpoint: Any) -> tuple[dict[str, Any], str | None, float | None]:
+def _checkpoint_state(checkpoint: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    metadata: dict[str, Any] = {}
     if isinstance(checkpoint, dict):
+        metadata = checkpoint
         if "model_state_dict" in checkpoint:
-            return checkpoint["model_state_dict"], checkpoint.get("model_version"), checkpoint.get("dropout")
+            return checkpoint["model_state_dict"], metadata
         if "state_dict" in checkpoint:
-            return checkpoint["state_dict"], checkpoint.get("model_version"), checkpoint.get("dropout")
+            return checkpoint["state_dict"], metadata
         if checkpoint and all(torch.is_tensor(value) for value in checkpoint.values()):
-            return checkpoint, None, None
+            return checkpoint, {}
     raise ValueError("Unsupported CNN checkpoint format.")
 
 
-def _load_cnn_model(model_path: Path, device: torch.device) -> tuple[torch.nn.Module, str]:
-    checkpoint = torch.load(model_path, map_location=device)
-    state_dict, checkpoint_version, checkpoint_dropout = _checkpoint_state(checkpoint)
-    state_dict = _clean_state_dict(state_dict)
+def _friendly_cnn_name(model_version: str) -> str:
+    if model_version == "mobilenet_v3_small":
+        return "MobileNetV3-Small"
+    if model_version == "v2":
+        return "Custom CNN V2"
+    if model_version == "v1":
+        return "Custom CNN V1"
+    return f"CNN {model_version}"
 
-    versions = []
+
+def _model_versions_to_try(checkpoint_version: str | None) -> list[str]:
+    versions: list[str] = []
     if checkpoint_version:
         versions.append(str(checkpoint_version))
-    if "v2" not in versions:
-        versions.append("v2")
-    if "v1" not in versions:
-        versions.append("v1")
+    for fallback in ["mobilenet_v3_small", "v2", "v1"]:
+        if fallback not in versions:
+            versions.append(fallback)
+    return versions
 
+
+def _model_image_settings(metadata: dict[str, Any], model_version: str) -> tuple[int, str]:
+    default_size = 224 if model_version == "mobilenet_v3_small" else 64
+    default_normalize = NORMALIZE_IMAGENET if model_version == "mobilenet_v3_small" else NORMALIZE_STANDARD
+    image_size = int(metadata.get("image_size", default_size))
+    normalize_mode = str(metadata.get("normalize_mode", default_normalize))
+    return image_size, normalize_mode
+
+
+def _load_cnn_model(model_path: Path, device: torch.device) -> tuple[torch.nn.Module, str, int, str]:
+    checkpoint = torch.load(model_path, map_location=device)
+    state_dict, metadata = _checkpoint_state(checkpoint)
+    state_dict = _clean_state_dict(state_dict)
+
+    checkpoint_version = metadata.get("model_version")
+    checkpoint_dropout = metadata.get("dropout")
     last_error: Exception | None = None
-    for version in versions:
-        dropout = float(checkpoint_dropout) if checkpoint_dropout is not None else (0.3 if version == "v2" else 0.35)
-        model = build_model(num_classes=2, model_version=version, dropout=dropout).to(device)
+
+    for version in _model_versions_to_try(checkpoint_version):
+        default_dropout = 0.3 if version in {"v2", "mobilenet_v3_small"} else 0.35
+        dropout = float(checkpoint_dropout) if checkpoint_dropout is not None else default_dropout
+        model = build_model(
+            num_classes=2,
+            model_version=version,
+            pretrained=False,
+            freeze_backbone=False,
+            dropout=dropout,
+        ).to(device)
         try:
             model.load_state_dict(state_dict)
         except RuntimeError as error:
             last_error = error
             continue
+
         model.eval()
-        return model, version
+        image_size, normalize_mode = _model_image_settings(metadata, version)
+        return model, version, image_size, normalize_mode
 
     raise RuntimeError(f"Could not load CNN checkpoint: {last_error}")
 

@@ -1,3 +1,8 @@
+"""This script performs dataset EDA. It loads the generated slot metadata,
+ checks required columns, summarizes class balance, train/validation/test splits,
+   image counts, and bounding-box sizes, then saves CSV summaries, plots, and 
+   a markdown report."""
+
 from __future__ import annotations
 
 import argparse
@@ -5,6 +10,7 @@ from pathlib import Path
 
 import matplotlib
 
+# Use non-GUI backend so plots can be saved without opening a window.
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -14,6 +20,7 @@ from src.data.coco_utils import readable_relative_path
 from src.utils.config import FIGURES_DIR, METRICS_DIR, PROJECT_ROOT
 
 
+# Columns that must exist in slot_annotations.csv.
 REQUIRED_COLUMNS = {
     "split",
     "image_id",
@@ -30,6 +37,7 @@ REQUIRED_COLUMNS = {
 
 
 def _parse_args() -> argparse.Namespace:
+    # Read command-line options for metadata input and output folders.
     parser = argparse.ArgumentParser(
         description="Analyze PKLot slot metadata and create dataset EDA outputs."
     )
@@ -55,10 +63,12 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _resolve_project_path(path: Path) -> Path:
+    # Convert relative paths into full project paths.
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
 def _load_metadata(path: Path) -> pd.DataFrame:
+    # Load slot metadata and check that required columns exist.
     if not path.is_file():
         raise FileNotFoundError(f"Missing metadata CSV: {path}")
 
@@ -67,6 +77,7 @@ def _load_metadata(path: Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Metadata is missing required columns: {sorted(missing)}")
 
+    # Convert size-related columns to numbers.
     numeric_columns = [
         "image_width",
         "image_height",
@@ -77,11 +88,13 @@ def _load_metadata(path: Path) -> pd.DataFrame:
     for column in numeric_columns:
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
+    # Add aspect ratio for bounding box analysis.
     df["aspect_ratio"] = df["width"] / df["height"]
     return df
 
 
 def _write_class_distribution(df: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
+    # Count how many vacant and occupied slot annotations exist.
     summary = (
         df.groupby("label")
         .size()
@@ -95,6 +108,7 @@ def _write_class_distribution(df: pd.DataFrame, output_dir: Path) -> pd.DataFram
 
 
 def _write_split_distribution(df: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
+    # Count slots and unique images in each split.
     split_counts = df.groupby("split").size().rename("slot_count")
     image_counts = df.groupby("split")["image_path"].nunique().rename("image_count")
     summary = (
@@ -109,6 +123,7 @@ def _write_split_distribution(df: pd.DataFrame, output_dir: Path) -> pd.DataFram
 
 
 def _write_split_label_distribution(df: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
+    # Count occupied/vacant slots separately for train, valid, and test.
     summary = (
         df.groupby(["split", "label"])
         .size()
@@ -123,6 +138,7 @@ def _write_split_label_distribution(df: pd.DataFrame, output_dir: Path) -> pd.Da
 
 
 def _stats_for_group(df: pd.DataFrame, group_name: str, split: str, label: str) -> list[dict]:
+    # Calculate box size statistics for one group of data.
     rows: list[dict] = []
     for metric in ["width", "height", "area", "aspect_ratio"]:
         values = df[metric].dropna()
@@ -146,6 +162,7 @@ def _stats_for_group(df: pd.DataFrame, group_name: str, split: str, label: str) 
 
 
 def _write_bbox_summary(df: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
+    # Create summary statistics for bounding box width, height, area, and aspect ratio.
     rows = _stats_for_group(df, "all", "all", "all")
 
     for split, split_df in df.groupby("split", sort=True):
@@ -160,6 +177,7 @@ def _write_bbox_summary(df: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
 
 
 def _write_image_summary(df: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
+    # First summarize each image, then summarize images by split.
     image_rows = (
         df.groupby(["split", "image_path", "file_name"], as_index=False)
         .agg(
@@ -195,6 +213,7 @@ def _write_image_summary(df: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
 
 
 def _plot_class_distribution(class_distribution: pd.DataFrame, figures_dir: Path) -> None:
+    # Save bar chart for occupied vs vacant counts.
     plt.figure(figsize=(6, 4))
     colors = ["#2f855a" if label == "vacant" else "#c53030" for label in class_distribution["label"]]
     plt.bar(class_distribution["label"], class_distribution["count"], color=colors)
@@ -207,6 +226,7 @@ def _plot_class_distribution(class_distribution: pd.DataFrame, figures_dir: Path
 
 
 def _plot_split_label_distribution(split_label_distribution: pd.DataFrame, figures_dir: Path) -> None:
+    # Save bar chart showing labels inside each dataset split.
     pivot = split_label_distribution.pivot(index="split", columns="label", values="count").fillna(0)
     pivot = pivot.reindex(columns=["occupied", "vacant"], fill_value=0)
     ax = pivot.plot(kind="bar", figsize=(7, 4), color=["#c53030", "#2f855a"])
@@ -221,6 +241,7 @@ def _plot_split_label_distribution(split_label_distribution: pd.DataFrame, figur
 
 
 def _plot_bbox_width_height_hist(df: pd.DataFrame, figures_dir: Path) -> None:
+    # Save histogram for bounding box width and height.
     plt.figure(figsize=(7, 4))
     plt.hist(df["width"].dropna(), bins=40, alpha=0.65, label="width", color="#3182ce")
     plt.hist(df["height"].dropna(), bins=40, alpha=0.65, label="height", color="#dd6b20")
@@ -234,6 +255,7 @@ def _plot_bbox_width_height_hist(df: pd.DataFrame, figures_dir: Path) -> None:
 
 
 def _plot_bbox_aspect_ratio_hist(df: pd.DataFrame, figures_dir: Path) -> None:
+    # Save histogram for bounding box shape ratio.
     plt.figure(figsize=(7, 4))
     plt.hist(df["aspect_ratio"].dropna(), bins=40, color="#805ad5")
     plt.title("Bounding Box Aspect Ratio")
@@ -245,6 +267,7 @@ def _plot_bbox_aspect_ratio_hist(df: pd.DataFrame, figures_dir: Path) -> None:
 
 
 def _dataframe_to_markdown(df: pd.DataFrame) -> str:
+    # Convert a pandas table into markdown text for the report.
     columns = [str(column) for column in df.columns]
     rows = [
         "| " + " | ".join(columns) + " |",
@@ -266,6 +289,7 @@ def _write_report(
     bbox_summary: pd.DataFrame,
     image_summary: pd.DataFrame,
 ) -> None:
+    # Build one markdown report using all EDA summary tables.
     total_annotations = int(class_distribution["count"].sum())
     occupied = int(
         class_distribution.loc[class_distribution["label"] == "occupied", "count"].sum()
@@ -318,6 +342,7 @@ def _write_report(
 
 
 def analyze_metadata(metadata: Path, output_dir: Path, figures_dir: Path) -> int:
+    # Main workflow: load metadata, create summaries, save plots, and write report.
     metadata_path = _resolve_project_path(metadata)
     output_path = _resolve_project_path(output_dir)
     figures_path = _resolve_project_path(figures_dir)
@@ -356,6 +381,7 @@ def analyze_metadata(metadata: Path, output_dir: Path, figures_dir: Path) -> int
 
 
 def main() -> int:
+    # Parse arguments and run dataset metadata analysis.
     args = _parse_args()
     return analyze_metadata(
         metadata=args.metadata,

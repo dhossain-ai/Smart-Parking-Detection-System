@@ -3,7 +3,7 @@ Classical,test,vacant,vacant,1877,Rows are actual labels; columns are predicted 
 Classical,test,vacant,occupied,123,Rows are actual labels; columns are predicted labels.
 Classical,test,occupied,vacant,116,Rows are actual labels; columns are predicted labels.
 Classical,test,occupied,occupied,1884,Rows are actual labels; columns are predicted labels.
-CNN,test,vacant,vacant,3807,Rows are actual labels; columns are predicted labels.
-CNN,test,vacant,occupied,193,Rows are actual labels; columns are predicted labels.
-CNN,test,occupied,vacant,23,Rows are actual labels; columns are predicted labels.
-CNN,test,occupied,occupied,3977,Rows are actual labels; columns are predicted labels.
+CNN,test,vacant,vacant,11622,Rows are actual labels; columns are predicted labels.
+CNN,test,vacant,occupied,378,Rows are actual labels; columns are predicted labels.
+CNN,test,occupied,vacant,99,Rows are actual labels; columns are predicted labels.
+CNN,test,occupied,occupied,11901,Rows are actual labels; columns are predicted labels.

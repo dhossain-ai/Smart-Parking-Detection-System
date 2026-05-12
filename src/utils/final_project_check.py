@@ -30,12 +30,14 @@ MODELS = [
         command="python -m src.classical.train_classical",
     ),
     CheckItem(
-        "CNN tuned model",
-        "models/cnn/best_cnn_model_v2.pth",
+        "MobileNetV3 final model",
+        "models/cnn/best_mobilenetv3_transfer_final.pth",
         command=(
-            "python -m src.neural.train_cnn --model-version v2 --epochs 8 --batch-size 64 "
-            "--samples-per-class 2000 --patience 3 --weight-decay 0.0001 "
-            "--output-model models/cnn/best_cnn_model_v2.pth --output-dir results/metrics/cnn_tuned"
+            "python -m src.neural.train_cnn --model-version mobilenet_v3_small --pretrained "
+            "--image-size 224 --epochs 30 --batch-size 64 --samples-per-class 12000 "
+            "--patience 8 --weight-decay 0.0001 "
+            "--output-model models/cnn/best_mobilenetv3_transfer_final.pth "
+            "--output-dir results/metrics/mobilenetv3_transfer_final"
         ),
     ),
 ]
@@ -57,12 +59,14 @@ METRICS = [
         command="python -m src.classical.train_classical",
     ),
     CheckItem(
-        "CNN tuned metrics",
-        "results/metrics/cnn_tuned/cnn_metrics.json",
+        "MobileNetV3 metrics",
+        "results/metrics/mobilenetv3_transfer_final/cnn_metrics.json",
         command=(
-            "python -m src.neural.train_cnn --model-version v2 --epochs 8 --batch-size 64 "
-            "--samples-per-class 2000 --patience 3 --weight-decay 0.0001 "
-            "--output-model models/cnn/best_cnn_model_v2.pth --output-dir results/metrics/cnn_tuned"
+            "python -m src.neural.train_cnn --model-version mobilenet_v3_small --pretrained "
+            "--image-size 224 --epochs 30 --batch-size 64 --samples-per-class 12000 "
+            "--patience 8 --weight-decay 0.0001 "
+            "--output-model models/cnn/best_mobilenetv3_transfer_final.pth "
+            "--output-dir results/metrics/mobilenetv3_transfer_final"
         ),
     ),
 ]
@@ -72,11 +76,6 @@ DEMO_OUTPUTS = [
         "CNN image side-by-side demo",
         "results/images/demo_image_cnn_side_by_side.jpg",
         command="python -m src.visualization.demo_image --model-type cnn",
-    ),
-    CheckItem(
-        "CNN video side-by-side demo",
-        "results/videos/demo_video_cnn_side_by_side.mp4",
-        command="python -m src.visualization.demo_video --model-type cnn --num-frames 30 --fps 5",
     ),
 ]
 

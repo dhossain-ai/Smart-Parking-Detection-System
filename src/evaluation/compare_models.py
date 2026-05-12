@@ -17,7 +17,7 @@ from src.utils.config import FIGURES_DIR, PROJECT_ROOT
 
 
 DEFAULT_CLASSICAL_METRICS = Path("results/metrics/classical/classical_metrics.json")
-DEFAULT_CNN_TUNED_METRICS = Path("results/metrics/cnn_tuned/cnn_metrics.json")
+DEFAULT_CNN_TUNED_METRICS = Path("results/metrics/mobilenetv3_transfer_final/cnn_metrics.json")
 DEFAULT_CNN_METRICS = Path("results/metrics/cnn/cnn_metrics.json")
 DEFAULT_OUTPUT_DIR = Path("results/metrics/comparison")
 DEFAULT_FIGURES_DIR = FIGURES_DIR
@@ -122,7 +122,7 @@ def _normalize_metrics(method: str, path: Path, data: dict[str, Any]) -> dict[st
         model = (
             "models/classical/classical_lbp_hsv_hog_svm.joblib"
             if method == "Classical"
-            else "models/cnn/best_cnn_model.pth"
+            else "models/cnn/best_mobilenetv3_transfer_final.pth"
         )
 
     inference_time = _first_present(
@@ -611,16 +611,16 @@ def _write_final_report(
             "",
             f"The best available CNN result for this comparison is {cnn_model}. The selected occupied-probability threshold is {cnn_threshold}. Test accuracy is {_format_value(cnn.get('accuracy'))}, precision is {_format_value(cnn.get('precision'))}, recall is {_format_value(cnn.get('recall'))}, and F1-score is {_format_value(cnn.get('f1_score'))}.",
             "",
-            "The current tuned CNN exceeds recall and F1 requirements but does not yet meet the strict accuracy and precision targets.",
+            "The MobileNetV3 model meets the accuracy, recall, and F1-score targets. Precision is slightly below the strict 97% target, so the CNN requirement is reported honestly as partially met.",
             "",
-            "The CNN is still useful for the visual demo and can be improved later with larger training samples, threshold tuning, or architecture/augmentation refinement.",
+            "The neural model is used for the visual demo because it is the strongest saved CNN result and has the lowest false occupancy rate in the current experiments.",
             "",
             "## Requirement Checklist",
             "",
             _markdown_table(checklist),
             "",
             f"Classical requirement: {classical_status}.",
-            f"CNN requirement: {cnn_status} with current tuned model; further training/tuning planned.",
+            f"CNN requirement: {cnn_status} with MobileNetV3-Small; precision is the only strict target still slightly below requirement.",
             "",
             "## False Occupancy Discussion",
             "",
@@ -644,7 +644,7 @@ def _write_final_report(
             "",
             "## Honest Conclusion",
             "",
-            "The classical method meets the assignment minimum requirements. The current tuned CNN result is strong, especially for occupied-slot recall, but it is still below the professor's accuracy and precision targets. Further CNN training and tuning can continue later without changing the reported Phase 6 metrics.",
+            "The classical method meets the assignment minimum requirements. MobileNetV3-Small is the final neural model because it improves accuracy, F1-score, and false occupancy rate over the earlier custom CNN. It meets accuracy, recall, and F1-score targets, while precision remains slightly below the strict 97% target.",
             "",
         ]
     )
@@ -664,11 +664,11 @@ def _write_slide_summary(
             "# Slide Summary",
             "",
             f"- Classical result: accuracy {_format_value(classical.get('accuracy'))}, precision {_format_value(classical.get('precision'))}, recall {_format_value(classical.get('recall'))}, F1-score {_format_value(classical.get('f1_score'))}; requirement met.",
-            f"- CNN result: accuracy {_format_value(cnn.get('accuracy'))}, precision {_format_value(cnn.get('precision'))}, recall {_format_value(cnn.get('recall'))}, F1-score {_format_value(cnn.get('f1_score'))}; strong but still below accuracy/precision targets.",
-            f"- Requirement status: Classical {_comparison_status(checklist, 'Classical')}; CNN {_comparison_status(checklist, 'CNN')} with current tuned model.",
-            "- Visual demo plan: use the best available real CNN result for overlays and comparison, while presenting CNN status honestly.",
+            f"- MobileNetV3 result: accuracy {_format_value(cnn.get('accuracy'))}, precision {_format_value(cnn.get('precision'))}, recall {_format_value(cnn.get('recall'))}, F1-score {_format_value(cnn.get('f1_score'))}; precision is slightly below the strict target.",
+            f"- Requirement status: Classical {_comparison_status(checklist, 'Classical')}; CNN {_comparison_status(checklist, 'CNN')} with MobileNetV3-Small.",
+            "- Visual demo plan: use MobileNetV3-Small for overlays and present the precision limitation honestly.",
             "- Weather limitation: current Roboflow COCO export has no reliable sunny/rainy/cloudy labels, so weather-wise accuracy is not reported.",
-            "- Next improvement: continue CNN training/tuning with larger samples, threshold analysis, architecture refinement, and augmentation updates.",
+            "- Next improvement: continue MobileNetV3 threshold and training tuning to push precision above 0.97.",
             "",
         ]
     )

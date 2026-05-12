@@ -6,6 +6,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# Try to use scikit-image feature functions.
+# If unavailable, fallback functions below are used.
 try:
     from skimage.feature import hog as skimage_hog
     from skimage.feature import local_binary_pattern as skimage_local_binary_pattern
@@ -18,6 +20,7 @@ from src.utils.config import PROJECT_ROOT, get_pklot_dir
 
 @dataclass(frozen=True)
 class FeatureConfig:
+    # Settings for classical feature extraction.
     image_size: int = 64
     lbp_radius: int = 2
     lbp_points: int = 16
@@ -28,6 +31,7 @@ class FeatureConfig:
 
 
 def resolve_image_path(image_path_value: str | Path) -> Path:
+    # Find the real image path from a manifest image path.
     image_path = Path(str(image_path_value))
     if image_path.is_absolute():
         return image_path
@@ -40,6 +44,7 @@ def resolve_image_path(image_path_value: str | Path) -> Path:
 
 
 def load_image_rgb(image_path: str | Path) -> np.ndarray | None:
+    # Load image using OpenCV and convert BGR to RGB.
     resolved_path = resolve_image_path(image_path)
     image_bgr = cv2.imread(str(resolved_path), cv2.IMREAD_COLOR)
     if image_bgr is None:
@@ -54,6 +59,7 @@ def crop_slot_image(
     x2: float,
     y2: float,
 ) -> np.ndarray | None:
+    # Crop one parking slot using bounding-box coordinates.
     height, width = image.shape[:2]
 
     left = max(0, min(width, int(np.floor(x1))))
@@ -68,6 +74,7 @@ def crop_slot_image(
 
 
 def resize_crop(crop: np.ndarray, image_size: int = 64) -> np.ndarray:
+    # Resize every slot crop to the same size for feature extraction.
     return cv2.resize(crop, (image_size, image_size), interpolation=cv2.INTER_AREA)
 
 
@@ -76,11 +83,14 @@ def extract_lbp_features(
     radius: int = 2,
     points: int = 16,
 ) -> np.ndarray:
+    # LBP captures texture patterns, useful for separating car surface from empty ground.
     gray = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2GRAY)
     if skimage_local_binary_pattern is not None:
         lbp = skimage_local_binary_pattern(gray, P=points, R=radius, method="uniform")
     else:
         lbp = _uniform_lbp_numpy(gray, radius=radius, points=points)
+
+    # Convert LBP image into a normalized histogram.
     bins = points + 2
     hist, _ = np.histogram(lbp.ravel(), bins=bins, range=(0, bins), density=False)
     hist = hist.astype(np.float32)
@@ -94,6 +104,7 @@ def extract_hsv_histogram(
     crop_rgb: np.ndarray,
     bins: tuple[int, int, int] = (8, 8, 8),
 ) -> np.ndarray:
+    # HSV histogram captures color information from the slot crop.
     crop_hsv = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2HSV)
     hist = cv2.calcHist(
         [crop_hsv],
@@ -102,6 +113,8 @@ def extract_hsv_histogram(
         list(bins),
         [0, 180, 0, 256, 0, 256],
     )
+
+    # Normalize histogram so crop brightness/size has less effect.
     hist = hist.astype(np.float32).ravel()
     total = hist.sum()
     if total > 0:
@@ -115,6 +128,7 @@ def extract_hog_features(
     pixels_per_cell: tuple[int, int] = (8, 8),
     cells_per_block: tuple[int, int] = (2, 2),
 ) -> np.ndarray:
+    # HOG captures edge and shape information, useful for car outlines.
     gray = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
     if skimage_hog is not None:
         features = skimage_hog(
@@ -132,6 +146,7 @@ def extract_hog_features(
 
 
 def _uniform_lbp_numpy(gray: np.ndarray, radius: int, points: int) -> np.ndarray:
+    # Fallback LBP implementation if scikit-image is not installed.
     height, width = gray.shape
     center = gray.astype(np.float32)
     yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)
@@ -157,6 +172,7 @@ def _uniform_lbp_numpy(gray: np.ndarray, radius: int, points: int) -> np.ndarray
 
 
 def _opencv_hog(gray: np.ndarray, orientations: int) -> np.ndarray:
+    # Fallback HOG implementation using OpenCV if scikit-image is not installed.
     height, width = gray.shape
     hog_descriptor = cv2.HOGDescriptor(
         _winSize=(width, height),
@@ -177,6 +193,7 @@ def extract_combined_features(
     config: FeatureConfig | None = None,
     feature_set: str = "lbp_hsv_hog",
 ) -> np.ndarray:
+    # Resize crop and combine selected feature types into one vector.
     config = config or FeatureConfig()
     resized = resize_crop(crop_rgb, config.image_size)
     feature_parts: list[np.ndarray] = []
@@ -213,6 +230,8 @@ def extract_features_from_record(
     config: FeatureConfig | None = None,
     feature_set: str = "lbp_hsv_hog",
 ) -> np.ndarray | None:
+    # Full feature extraction for one manifest row.
+    # It loads the image, crops the slot, and extracts LBP/HSV/HOG features.
     image = load_image_rgb(record["image_path"])
     if image is None:
         return None
@@ -232,6 +251,8 @@ def extract_features_from_record(
         return None
 
     features = extract_combined_features(crop, config=config, feature_set=feature_set)
+
+    # Reject invalid feature vectors.
     if not np.isfinite(features).all():
         return None
 

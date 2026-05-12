@@ -9,6 +9,7 @@ from typing import Any
 import joblib
 import matplotlib
 
+# Use non-GUI backend so confusion matrix plot can be saved as a file.
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -27,6 +28,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC, SVC
 
+# tqdm shows progress bars. If not installed, normal loop is used.
 try:
     from tqdm import tqdm
 except ModuleNotFoundError:
@@ -39,16 +41,21 @@ from src.data.coco_utils import readable_relative_path
 from src.utils.config import FIGURES_DIR, PROJECT_ROOT
 
 
+# Default input manifests and output locations.
 DEFAULT_TRAIN_MANIFEST = Path("data/splits/train_slots_balanced_small.csv")
 DEFAULT_VALID_MANIFEST = Path("data/splits/valid_slots_balanced_small.csv")
 DEFAULT_TEST_MANIFEST = Path("data/splits/test_slots_balanced_small.csv")
 DEFAULT_OUTPUT_MODEL = Path("models/classical/classical_lbp_hsv_hog_svm.joblib")
 DEFAULT_OUTPUT_DIR = Path("results/metrics/classical")
+
+# Numeric labels used by the classifier.
+# 0 = vacant, 1 = occupied.
 LABELS = [0, 1]
 LABEL_NAMES = ["vacant", "occupied"]
 
 
 def _parse_args() -> argparse.Namespace:
+    # Read command-line options for training.
     parser = argparse.ArgumentParser(
         description="Train and evaluate a classical PKLot slot occupancy model."
     )
@@ -72,6 +79,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _resolve_project_path(path: Path) -> Path:
+    # Convert relative path into full project path.
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
@@ -81,18 +89,23 @@ def _extract_feature_matrix(
     config: FeatureConfig,
     feature_set: str,
 ) -> tuple[np.ndarray, np.ndarray, list[SlotRecord], int, float]:
+    # Extract feature vectors and labels from manifest records.
     features: list[np.ndarray] = []
     targets: list[int] = []
     kept_records: list[SlotRecord] = []
     skipped = 0
 
     start = time.perf_counter()
+
+    # For each slot record, load image, crop slot, and extract features.
     for record in tqdm(records, desc=f"Extracting {split_name} features", unit="slot"):
         vector = extract_features_from_record(
             record.as_feature_record(),
             config=config,
             feature_set=feature_set,
         )
+
+        # Skip records where image loading, crop, or feature extraction failed.
         if vector is None:
             skipped += 1
             continue
@@ -102,6 +115,7 @@ def _extract_feature_matrix(
         kept_records.append(record)
 
     elapsed = time.perf_counter() - start
+
     if not features:
         raise RuntimeError(f"No valid features extracted for {split_name}")
 
@@ -115,9 +129,11 @@ def _extract_feature_matrix(
 
 
 def _build_classifier(classifier_name: str, seed: int) -> Pipeline | RandomForestClassifier:
+    # Build the selected classical ML classifier.
     if classifier_name == "linear_svm":
         return Pipeline(
             [
+                # Scale features before SVM training.
                 ("scaler", StandardScaler()),
                 (
                     "classifier",
@@ -130,6 +146,7 @@ def _build_classifier(classifier_name: str, seed: int) -> Pipeline | RandomFores
                 ),
             ]
         )
+
     if classifier_name == "rbf_svm":
         return Pipeline(
             [
@@ -146,6 +163,7 @@ def _build_classifier(classifier_name: str, seed: int) -> Pipeline | RandomFores
                 ),
             ]
         )
+
     if classifier_name == "random_forest":
         return RandomForestClassifier(
             n_estimators=250,
@@ -160,10 +178,12 @@ def _build_classifier(classifier_name: str, seed: int) -> Pipeline | RandomFores
 
 
 def _false_occupancy_rate(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    # False occupancy means actual vacant slot predicted as occupied.
     vacant_mask = y_true == 0
     total_vacant = int(vacant_mask.sum())
     if total_vacant == 0:
         return 0.0
+
     false_occupied = int(((y_pred == 1) & vacant_mask).sum())
     return false_occupied / total_vacant
 
@@ -175,10 +195,12 @@ def _evaluate_split(
     split_name: str,
     feature_seconds: float,
 ) -> tuple[dict[str, Any], np.ndarray, str]:
+    # Evaluate model on validation or test features.
     start = time.perf_counter()
     predictions = model.predict(x)
     inference_seconds = time.perf_counter() - start
 
+    # Occupied is treated as the positive class.
     metrics = {
         "split": split_name,
         "records": int(len(y)),
@@ -192,6 +214,7 @@ def _evaluate_split(
         "feature_extraction_seconds": float(feature_seconds),
         "feature_extraction_speed_per_slot_sec": float(feature_seconds / max(1, len(y))),
     }
+
     matrix = confusion_matrix(y, predictions, labels=LABELS)
     report = classification_report(
         y,
@@ -208,7 +231,9 @@ def _save_confusion_matrix_csv(
     test_matrix: np.ndarray,
     output_path: Path,
 ) -> None:
+    # Save validation and test confusion matrices as a CSV table.
     rows = []
+
     for split_name, matrix in [("valid", valid_matrix), ("test", test_matrix)]:
         for actual_index, actual_label in enumerate(LABEL_NAMES):
             for predicted_index, predicted_label in enumerate(LABEL_NAMES):
@@ -220,10 +245,12 @@ def _save_confusion_matrix_csv(
                         "count": int(matrix[actual_index, predicted_index]),
                     }
                 )
+
     pd.DataFrame(rows).to_csv(output_path, index=False)
 
 
 def _save_confusion_matrix_figure(matrix: np.ndarray, output_path: Path) -> None:
+    # Save test confusion matrix as an image.
     fig, ax = plt.subplots(figsize=(5, 4))
     image = ax.imshow(matrix, cmap="Blues")
     ax.set_title("Classical Model Test Confusion Matrix")
@@ -234,6 +261,7 @@ def _save_confusion_matrix_figure(matrix: np.ndarray, output_path: Path) -> None
     ax.set_xticklabels(LABEL_NAMES)
     ax.set_yticklabels(LABEL_NAMES)
 
+    # Write count values inside the matrix cells.
     max_value = matrix.max() if matrix.size else 0
     threshold = max_value / 2 if max_value else 0
     for row in range(matrix.shape[0]):
@@ -248,15 +276,18 @@ def _save_confusion_matrix_figure(matrix: np.ndarray, output_path: Path) -> None
 
 
 def train_classical(args: argparse.Namespace) -> int:
+    # Main training workflow for the classical model.
     output_model_path = _resolve_project_path(args.output_model)
     output_dir = _resolve_project_path(args.output_dir)
     figures_dir = FIGURES_DIR
+
     output_model_path.parent.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     figures_dir.mkdir(parents=True, exist_ok=True)
 
     feature_config = FeatureConfig(image_size=args.image_size)
 
+    # Load train, validation, and test slot records from manifest CSVs.
     train_records = load_manifest_records(
         args.train_manifest,
         max_per_class=args.max_train_per_class,
@@ -280,6 +311,7 @@ def train_classical(args: argparse.Namespace) -> int:
     print(f"Valid records requested: {len(valid_records)}")
     print(f"Test records requested: {len(test_records)}")
 
+    # Extract feature matrices for train, validation, and test data.
     x_train, y_train, train_kept, train_skipped, train_feature_seconds = _extract_feature_matrix(
         train_records,
         "train",
@@ -299,11 +331,13 @@ def train_classical(args: argparse.Namespace) -> int:
         args.feature_set,
     )
 
+    # Train selected classical classifier.
     model = _build_classifier(args.classifier, seed=args.seed)
     train_start = time.perf_counter()
     model.fit(x_train, y_train)
     train_seconds = time.perf_counter() - train_start
 
+    # Evaluate on validation and test sets.
     valid_metrics, valid_matrix, valid_report = _evaluate_split(
         model,
         x_valid,
@@ -319,6 +353,7 @@ def train_classical(args: argparse.Namespace) -> int:
         test_feature_seconds,
     )
 
+    # Add training configuration info to saved metrics.
     for metrics in [valid_metrics, test_metrics]:
         metrics["classifier"] = args.classifier
         metrics["feature_set"] = args.feature_set
@@ -329,6 +364,7 @@ def train_classical(args: argparse.Namespace) -> int:
         metrics["skipped_valid_records"] = int(valid_skipped)
         metrics["skipped_test_records"] = int(test_skipped)
 
+    # Save metrics as CSV and JSON.
     metrics_df = pd.DataFrame([valid_metrics, test_metrics])
     metrics_df.to_csv(output_dir / "classical_metrics.csv", index=False)
     (output_dir / "classical_metrics.json").write_text(
@@ -344,6 +380,7 @@ def train_classical(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
 
+    # Save text classification report.
     report_text = "\n".join(
         [
             "Classical PKLot Slot Occupancy Classification Report",
@@ -359,6 +396,8 @@ def train_classical(args: argparse.Namespace) -> int:
         ]
     )
     (output_dir / "classification_report.txt").write_text(report_text, encoding="utf-8")
+
+    # Save confusion matrix outputs.
     _save_confusion_matrix_csv(
         valid_matrix,
         test_matrix,
@@ -369,6 +408,7 @@ def train_classical(args: argparse.Namespace) -> int:
         figures_dir / "classical_confusion_matrix.png",
     )
 
+    # Save trained model and feature settings.
     joblib.dump(
         {
             "model": model,
@@ -400,6 +440,7 @@ def train_classical(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # Start classical training from command-line arguments.
     return train_classical(_parse_args())
 
 

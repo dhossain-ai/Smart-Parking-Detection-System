@@ -18,6 +18,8 @@ class _ParkingSlotBaseCNN(nn.Module):
 
         c1, c2, c3, c4 = channels
 
+        # Feature extractor for the custom CNN.
+        # It uses convolution, batch normalization, ReLU, and pooling.
         self.features = nn.Sequential(
             self._conv_block(3, c1),
             nn.MaxPool2d(kernel_size=2),
@@ -29,6 +31,7 @@ class _ParkingSlotBaseCNN(nn.Module):
             nn.AdaptiveAvgPool2d((1, 1)),
         )
 
+        # Final classifier that predicts vacant or occupied.
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Dropout(p=dropout),
@@ -40,6 +43,7 @@ class _ParkingSlotBaseCNN(nn.Module):
 
     @staticmethod
     def _conv_block(in_channels: int, out_channels: int) -> nn.Sequential:
+        # One basic CNN block.
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
@@ -47,12 +51,14 @@ class _ParkingSlotBaseCNN(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Forward pass through feature extractor and classifier.
         x = self.features(x)
         return self.classifier(x)
 
 
 class ParkingSlotCNN(_ParkingSlotBaseCNN):
     def __init__(self, num_classes: int = 2, dropout: float = 0.35) -> None:
+        # Original custom CNN version.
         super().__init__(
             channels=(32, 64, 128, 192),
             hidden_units=96,
@@ -63,6 +69,7 @@ class ParkingSlotCNN(_ParkingSlotBaseCNN):
 
 class ParkingSlotCNNV2(_ParkingSlotBaseCNN):
     def __init__(self, num_classes: int = 2, dropout: float = 0.3) -> None:
+        # Larger custom CNN version.
         super().__init__(
             channels=(48, 96, 160, 256),
             hidden_units=128,
@@ -78,7 +85,7 @@ def build_model(
     freeze_backbone: bool = False,
     dropout: float = 0.3,
 ) -> nn.Module:
-    # This function keeps all neural model choices in one place.
+    # Model factory. This chooses which neural model to build.
 
     if model_version == "v1":
         return ParkingSlotCNN(num_classes=num_classes, dropout=dropout)
@@ -86,6 +93,7 @@ def build_model(
     if model_version == "v2":
         return ParkingSlotCNNV2(num_classes=num_classes, dropout=dropout)
 
+    # Final project model uses this option.
     if model_version == "mobilenet_v3_small":
         return _build_mobilenet_v3_small(
             num_classes=num_classes,
@@ -103,6 +111,7 @@ def _build_mobilenet_v3_small(
     freeze_backbone: bool,
     dropout: float,
 ) -> nn.Module:
+    # Build MobileNetV3-Small transfer-learning model.
     try:
         from torchvision import models
     except ModuleNotFoundError as error:
@@ -110,9 +119,13 @@ def _build_mobilenet_v3_small(
             "MobileNetV3-Small needs torchvision. Install requirements.txt first."
         ) from error
 
+    # Load MobileNetV3-Small, optionally with ImageNet pretrained weights.
     model = _load_mobilenet_v3_small(models=models, pretrained=pretrained)
+
+    # Replace original ImageNet classifier with 2-class parking classifier.
     _replace_classifier(model=model, num_classes=num_classes, dropout=dropout)
 
+    # Optional: freeze backbone and train only classifier.
     if freeze_backbone:
         for parameter in model.features.parameters():
             parameter.requires_grad = False
@@ -124,9 +137,11 @@ def _build_mobilenet_v3_small(
 
 
 def _load_mobilenet_v3_small(models: Any, pretrained: bool) -> nn.Module:
+    # Load MobileNetV3-Small from torchvision.
     if not pretrained:
         return models.mobilenet_v3_small(weights=None)
 
+    # Support newer and older torchvision versions.
     try:
         weights = models.MobileNet_V3_Small_Weights.DEFAULT
         return models.mobilenet_v3_small(weights=weights)
@@ -135,15 +150,18 @@ def _load_mobilenet_v3_small(models: Any, pretrained: bool) -> nn.Module:
 
 
 def _replace_classifier(model: nn.Module, num_classes: int, dropout: float) -> None:
+    # Replace MobileNetV3 classifier output layer for vacant/occupied prediction.
     classifier = getattr(model, "classifier", None)
 
     if not isinstance(classifier, nn.Sequential):
         raise ValueError("Unsupported MobileNetV3 classifier structure.")
 
+    # Set dropout value in MobileNet classifier.
     for layer in classifier:
         if isinstance(layer, nn.Dropout):
             layer.p = dropout
 
+    # Find the last Linear layer and replace it.
     output_layer_index = _find_last_linear_layer(classifier)
     old_output_layer = classifier[output_layer_index]
 
@@ -157,6 +175,7 @@ def _replace_classifier(model: nn.Module, num_classes: int, dropout: float) -> N
 
 
 def _find_last_linear_layer(classifier: nn.Sequential) -> int:
+    # Find final Linear layer inside MobileNetV3 classifier.
     for index in range(len(classifier) - 1, -1, -1):
         if isinstance(classifier[index], nn.Linear):
             return index

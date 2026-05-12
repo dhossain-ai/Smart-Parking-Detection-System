@@ -9,8 +9,13 @@ from src.data.coco_utils import readable_relative_path
 from src.utils.config import PROJECT_ROOT
 
 
+# Expected dataset splits.
 EXPECTED_SPLITS = ("train", "valid", "test")
+
+# Final project labels.
 EXPECTED_LABELS = ("occupied", "vacant")
+
+# Columns needed by training scripts.
 MANIFEST_COLUMNS = [
     "split",
     "image_path",
@@ -27,6 +32,7 @@ MANIFEST_COLUMNS = [
 
 
 def _parse_args() -> argparse.Namespace:
+    # Read command-line options for manifest creation.
     parser = argparse.ArgumentParser(
         description="Create PKLot training manifest CSVs from slot metadata."
     )
@@ -58,10 +64,12 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _resolve_project_path(path: Path) -> Path:
+    # Convert relative paths into full project paths.
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
 def _load_manifest_columns(metadata_path: Path) -> pd.DataFrame:
+    # Load only the columns needed for model training.
     if not metadata_path.is_file():
         raise FileNotFoundError(f"Missing metadata CSV: {metadata_path}")
 
@@ -78,6 +86,8 @@ def _balanced_subset(
     samples_per_class: int,
     seed: int,
 ) -> pd.DataFrame:
+    # Create a smaller balanced version of one split.
+    # This helps quick training and testing.
     groups: list[pd.DataFrame] = []
 
     for label in EXPECTED_LABELS:
@@ -88,9 +98,11 @@ def _balanced_subset(
         sample_size = min(samples_per_class, len(label_df))
         groups.append(label_df.sample(n=sample_size, random_state=seed))
 
+    # If no rows exist, return an empty dataframe with same columns.
     if not groups:
         return split_df.iloc[0:0].copy()
 
+    # Combine occupied and vacant samples, then shuffle them.
     return (
         pd.concat(groups, ignore_index=True)
         .sample(frac=1.0, random_state=seed)
@@ -104,25 +116,32 @@ def create_training_manifests(
     samples_per_class: int,
     seed: int,
 ) -> int:
+    # Main workflow for creating train/valid/test manifest CSVs.
     metadata_path = _resolve_project_path(metadata)
     output_path = _resolve_project_path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
+    # Load clean slot metadata from the previous preprocessing step.
     df = _load_manifest_columns(metadata_path)
 
     print("Training manifest generation")
     print(f"Metadata rows: {len(df)}")
     print(f"Output directory: {readable_relative_path(output_path, PROJECT_ROOT)}")
 
+    # Create one full manifest and one small balanced manifest for each split.
     for split in EXPECTED_SPLITS:
         split_df = df.loc[df["split"] == split].copy()
+
+        # Save full split manifest.
         manifest_path = output_path / f"{split}_slots.csv"
         split_df.to_csv(manifest_path, index=False)
 
+        # Save smaller balanced split manifest.
         balanced_df = _balanced_subset(split_df, samples_per_class, seed)
         balanced_path = output_path / f"{split}_slots_balanced_small.csv"
         balanced_df.to_csv(balanced_path, index=False)
 
+        # Print label counts for checking class balance.
         label_counts = split_df["label"].value_counts().to_dict()
         balanced_counts = balanced_df["label"].value_counts().to_dict()
         print(
@@ -140,6 +159,7 @@ def create_training_manifests(
 
 
 def main() -> int:
+    # Parse command-line arguments and create manifest files.
     args = _parse_args()
     return create_training_manifests(
         metadata=args.metadata,
